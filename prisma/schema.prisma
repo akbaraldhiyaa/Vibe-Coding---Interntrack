@@ -1,0 +1,99 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id                String   @id @default(uuid())
+  fullName          String
+  email             String   @unique
+  password          String // We will use simple mock auth, but hash it later
+  role              String   @default("Siswa") // Admin, Guru Pembimbing, Pembimbing Industri, Siswa, Kepala Sekolah
+  whatsapp          String?
+  institution       String?
+  department        String?
+  notificationEmail Boolean  @default(true)
+  weeklySummary     Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model Dudi {
+  id                 String    @id @default(uuid())
+  name               String    @unique
+  address            String
+  industrySupervisor String
+  quota              Int       @default(1)
+  qrCode             String?
+  students           Student[]
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+}
+
+model Student {
+  id                 String             @id @default(uuid())
+  nisn               String             @unique
+  name               String
+  class              String
+  department         String
+  dudiId             String?
+  dudi               Dudi?              @relation(fields: [dudiId], references: [id])
+  schoolSupervisor   String?
+  industrySupervisor String?
+  stage              String             @default("Pendaftaran & Pembekalan")
+  status             String             @default("Aktif")
+  avatar             String?
+  whatsapp           String?
+  email              String?
+  attendanceRecords  AttendanceRecord[]
+  journals           Journal[]
+  evaluations        Evaluation[]
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+}
+
+model AttendanceRecord {
+  id             String   @id @default(uuid())
+  studentId      String
+  student        Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  date           String // YYYY-MM-DD
+  timeIn         String?
+  timeOut        String?
+  status         String // Hadir, Terlambat, Izin, Sakit, Tidak Hadir
+  correctionNote String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([studentId, date])
+}
+
+model Journal {
+  id          String   @id @default(uuid())
+  studentId   String
+  student     Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  date        String // YYYY-MM-DD
+  activity    String
+  description String
+  status      String   @default("Draft") // Draft, Menunggu Verifikasi, Disetujui, Revisi
+  image       String?
+  feedback    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Evaluation {
+  id                String   @id @default(uuid())
+  studentId         String
+  student           Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  technicalScore    Float    @default(0)
+  nonTechnicalScore Float    @default(0)
+  finalScore        Float    @default(0)
+  certificateNumber String?
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}

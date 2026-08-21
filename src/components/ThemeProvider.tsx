@@ -14,16 +14,7 @@ export function ThemeProvider({
   defaultTheme = "system",
   storageKey = "interntrack-theme",
 }: ThemeProviderProps) {
-  const [theme, setThemeState] = useState<Theme>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem(storageKey) as Theme | null;
-      if (saved && (saved === "light" || saved === "dark" || saved === "system")) {
-        return saved;
-      }
-    }
-    return defaultTheme;
-  });
-
+  const [theme, setThemeState] = useState<Theme>(defaultTheme);
   const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">("light");
 
   const applyTheme = useCallback(
@@ -47,6 +38,16 @@ export function ThemeProvider({
     },
     []
   );
+
+  useEffect(() => {
+    const saved = localStorage.getItem(storageKey) as Theme | null;
+    if (saved && (saved === "light" || saved === "dark" || saved === "system")) {
+      setThemeState(saved);
+      applyTheme(saved);
+    } else {
+      applyTheme(defaultTheme);
+    }
+  }, [storageKey, defaultTheme, applyTheme]);
 
   useEffect(() => {
     applyTheme(theme);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Database,
   Plus,
@@ -8,11 +8,15 @@ import {
   Trash2,
   Users,
   Building2,
-  X,
   AlertTriangle,
   Search,
+  QrCode,
 } from "lucide-react";
+import FocusLock from "react-focus-lock";
 import { useInternTrackStore, Student, Dudi } from "@/shared/store/useInternTrackStore";
+import AddStudentModal from "../modals/AddStudentModal";
+import AddDudiModal from "../modals/AddDudiModal";
+import DudiQrModal from "../modals/DudiQrModal";
 
 export default function DataMasterView() {
   const {
@@ -35,19 +39,26 @@ export default function DataMasterView() {
   const [editStudentTarget, setEditStudentTarget] = useState<Student | null>(null);
   const [deleteStudentTarget, setDeleteStudentTarget] = useState<Student | null>(null);
 
-  // Form states for Student
-  const [stdName, setStdName] = useState("");
-  const [stdNisn, setStdNisn] = useState("");
-  const [stdClass, setStdClass] = useState("XII RPL 1");
-  const [stdDept, setStdDept] = useState("Rekayasa Perangkat Lunak");
-  const [stdDudi, setStdDudi] = useState("PT Technology Nusantara");
-
   // DUDI Modals
   const [isAddDudiOpen, setIsAddDudiOpen] = useState(false);
-  const [dudiName, setDudiName] = useState("");
-  const [dudiAddress, setDudiAddress] = useState("");
-  const [dudiSupervisor, setDudiSupervisor] = useState("");
-  const [dudiQuota, setDudiQuota] = useState(5);
+  const [qrDudiTarget, setQrDudiTarget] = useState<Dudi | null>(null);
+
+  /* ── Handle ESC Key ────────────────────────────────────────────── */
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsAddStudentOpen(false);
+        setEditStudentTarget(null);
+        setDeleteStudentTarget(null);
+        setIsAddDudiOpen(false);
+        setQrDudiTarget(null);
+      }
+    };
+    if (isAddStudentOpen || editStudentTarget || deleteStudentTarget || isAddDudiOpen || qrDudiTarget) {
+      document.addEventListener("keydown", handleKeyDown);
+    }
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isAddStudentOpen, editStudentTarget, deleteStudentTarget, isAddDudiOpen, qrDudiTarget]);
 
   const filteredStudents = students.filter(
     (s) =>
@@ -61,56 +72,6 @@ export default function DataMasterView() {
       d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       d.address.toLowerCase().includes(searchQuery.toLowerCase())
   );
-
-  const handleSaveStudent = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editStudentTarget) {
-      updateStudent(editStudentTarget.id, {
-        name: stdName,
-        nisn: stdNisn,
-        class: stdClass,
-        department: stdDept,
-        dudiName: stdDudi,
-      });
-      setEditStudentTarget(null);
-    } else {
-      addStudent({
-        nisn: stdNisn,
-        name: stdName,
-        class: stdClass,
-        department: stdDept,
-        dudiName: stdDudi,
-        schoolSupervisor: "Bpk. Hendra Wijaya, S.Kom",
-        industrySupervisor: "Ibu Maya Kartika",
-        stage: "Pelaksanaan (DUDI)",
-        status: "Aktif",
-        avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150",
-        whatsapp: "081234567890",
-        email: `${stdName.toLowerCase().replace(/\s+/g, ".")}@smkn3.sch.id`,
-        attendanceRate: 100,
-        journalCount: 0,
-      });
-      setIsAddStudentOpen(false);
-    }
-    setStdName("");
-    setStdNisn("");
-  };
-
-  const handleSaveDudi = (e: React.FormEvent) => {
-    e.preventDefault();
-    addDudi({
-      name: dudiName,
-      address: dudiAddress,
-      industrySupervisor: dudiSupervisor,
-      quota: dudiQuota,
-      activeStudents: 0,
-      qrCode: `QR-${dudiName.replace(/\s+/g, "-").toUpperCase()}-2026`,
-    });
-    setIsAddDudiOpen(false);
-    setDudiName("");
-    setDudiAddress("");
-    setDudiSupervisor("");
-  };
 
   return (
     <div className="space-y-6">
@@ -131,8 +92,6 @@ export default function DataMasterView() {
             <button
               onClick={() => {
                 setEditStudentTarget(null);
-                setStdName("");
-                setStdNisn("");
                 setIsAddStudentOpen(true);
               }}
               type="button"
@@ -182,8 +141,65 @@ export default function DataMasterView() {
 
       {/* TAB CONTENT 1: SISWA TABLE */}
       {activeMasterTab === "siswa" && (
-        <div className="p-6 rounded-2xl bg-[var(--card-bg)] border border-[var(--card-border)] shadow-[var(--card-shadow)]">
-          <div className="overflow-x-auto">
+        <div className="p-4 sm:p-6 rounded-2xl bg-[var(--card-bg)] border border-[var(--card-border)] shadow-[var(--card-shadow)]">
+          {/* ── MOBILE CARD VIEW (SISWA) ─────────────────────────────── */}
+          <div className="md:hidden space-y-4">
+            {filteredStudents.map((std) => (
+              <div key={std.id} className="p-4 rounded-xl border border-[var(--card-border)] bg-[var(--surface-alt)] shadow-sm space-y-3">
+                <div className="flex items-center gap-3">
+                  {std.avatar ? (
+                    <img
+                      src={std.avatar}
+                      alt={std.name}
+                      className="w-10 h-10 rounded-full object-cover shrink-0"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-sm shrink-0">
+                      {std.name.substring(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                  <div>
+                    <h3 className="text-sm font-bold text-[var(--foreground)]">{std.name}</h3>
+                    <p className="text-[11px] text-[var(--card-subtitle)]">{std.nisn} • {std.class}</p>
+                  </div>
+                </div>
+                
+                <div className="text-xs space-y-1 pt-2 border-t border-[var(--table-border)]">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Perusahaan</span>
+                    <span className="font-semibold text-blue-600 dark:text-blue-400">{std.dudiName}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Pembimbing</span>
+                    <span className="font-medium text-[var(--foreground)]">{std.schoolSupervisor}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--table-border)]">
+                  <button
+                    onClick={() => {
+                      setEditStudentTarget(std);
+                    }}
+                    className="p-2 rounded-lg text-blue-600 border border-[var(--input-border)] hover:bg-blue-50 dark:hover:bg-blue-950/40 cursor-pointer"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setDeleteStudentTarget(std)}
+                    className="p-2 rounded-lg text-red-600 border border-red-200 dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+            {filteredStudents.length === 0 && (
+              <div className="py-8 text-center text-[var(--card-subtitle)] text-sm">Belum ada data siswa.</div>
+            )}
+          </div>
+
+          {/* ── DESKTOP TABLE (SISWA) ────────────────────────────────── */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="border-b border-[var(--card-border)] bg-[var(--table-header-bg)] text-[var(--card-subtitle)] font-semibold">
@@ -198,11 +214,17 @@ export default function DataMasterView() {
                 {filteredStudents.map((std) => (
                   <tr key={std.id} className="hover:bg-[var(--table-hover-bg)] transition-colors">
                     <td className="py-3.5 px-4 font-bold flex items-center gap-3">
-                      <img
-                        src={std.avatar}
-                        alt={std.name}
-                        className="w-8 h-8 rounded-full object-cover shrink-0"
-                      />
+                      {std.avatar ? (
+                        <img
+                          src={std.avatar}
+                          alt={std.name}
+                          className="w-10 h-10 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-sm shrink-0 border border-slate-200 dark:border-slate-700">
+                          {std.name.substring(0, 2).toUpperCase()}
+                        </div>
+                      )}
                       <div>
                         <p className="text-xs font-bold">{std.name}</p>
                         <p className="text-[10px] text-slate-600">{std.nisn}</p>
@@ -220,11 +242,6 @@ export default function DataMasterView() {
                       <button
                         onClick={() => {
                           setEditStudentTarget(std);
-                          setStdName(std.name);
-                          setStdNisn(std.nisn);
-                          setStdClass(std.class);
-                          setStdDept(std.department);
-                          setStdDudi(std.dudiName);
                         }}
                         className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 cursor-pointer"
                         title="Edit Data Siswa"
@@ -241,6 +258,13 @@ export default function DataMasterView() {
                     </td>
                   </tr>
                 ))}
+                {filteredStudents.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="py-12 text-center text-[var(--card-subtitle)] text-sm">
+                      Belum ada data siswa.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -249,8 +273,52 @@ export default function DataMasterView() {
 
       {/* TAB CONTENT 2: DUDI TABLE */}
       {activeMasterTab === "dudi" && (
-        <div className="p-6 rounded-2xl bg-[var(--card-bg)] border border-[var(--card-border)] shadow-[var(--card-shadow)]">
-          <div className="overflow-x-auto">
+        <div className="p-4 sm:p-6 rounded-2xl bg-[var(--card-bg)] border border-[var(--card-border)] shadow-[var(--card-shadow)]">
+          {/* ── MOBILE CARD VIEW (DUDI) ──────────────────────────────── */}
+          <div className="md:hidden space-y-4">
+            {filteredDudi.map((dudi) => (
+              <div key={dudi.id} className="p-4 rounded-xl border border-[var(--card-border)] bg-[var(--surface-alt)] shadow-sm space-y-3">
+                <div>
+                  <h3 className="text-sm font-bold text-[var(--foreground)]">{dudi.name}</h3>
+                  <p className="text-[11px] text-[var(--card-subtitle)] mt-0.5">{dudi.address}</p>
+                </div>
+                
+                <div className="text-xs space-y-1.5 pt-2 border-t border-[var(--table-border)]">
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500">Pembimbing Industri</span>
+                    <span className="font-semibold text-[var(--foreground)]">{dudi.industrySupervisor}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500">Kuota / Siswa Aktif</span>
+                    <span className="font-mono bg-[var(--card-bg)] px-2 py-0.5 rounded border border-[var(--card-border)]">
+                      {dudi.activeStudents} / {dudi.quota}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--table-border)]">
+                  <button
+                    onClick={() => setQrDudiTarget(dudi)}
+                    className="p-2 rounded-lg text-emerald-600 border border-emerald-200 dark:border-emerald-900/30 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 cursor-pointer"
+                  >
+                    <QrCode className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => deleteDudi(dudi.id)}
+                    className="p-2 rounded-lg text-red-600 border border-red-200 dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+            {filteredDudi.length === 0 && (
+              <div className="py-8 text-center text-[var(--card-subtitle)] text-sm">Belum ada data DUDI.</div>
+            )}
+          </div>
+
+          {/* ── DESKTOP TABLE (DUDI) ─────────────────────────────────── */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="border-b border-[var(--card-border)] bg-[var(--table-header-bg)] text-[var(--card-subtitle)] font-semibold">
@@ -270,7 +338,14 @@ export default function DataMasterView() {
                     <td className="py-3.5 px-4 font-mono font-bold">
                       {dudi.activeStudents} / {dudi.quota} Siswa
                     </td>
-                    <td className="py-3.5 px-4 text-right">
+                    <td className="py-3.5 px-4 text-right space-x-2">
+                      <button
+                        onClick={() => setQrDudiTarget(dudi)}
+                        className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 cursor-pointer"
+                        title="Lihat QR Code"
+                      >
+                        <QrCode className="w-4 h-4" />
+                      </button>
                       <button
                         onClick={() => deleteDudi(dudi.id)}
                         className="p-1.5 rounded-lg text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer"
@@ -281,6 +356,13 @@ export default function DataMasterView() {
                     </td>
                   </tr>
                 ))}
+                {filteredDudi.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="py-12 text-center text-[var(--card-subtitle)] text-sm">
+                      Belum ada data mitra DUDI.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -288,122 +370,24 @@ export default function DataMasterView() {
       )}
 
       {/* ADD/EDIT STUDENT MODAL */}
-      {(isAddStudentOpen || editStudentTarget) && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-[var(--card-bg)] border border-[var(--card-border)] rounded-3xl p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150 relative">
-            <button
-              onClick={() => {
-                setIsAddStudentOpen(false);
-                setEditStudentTarget(null);
-              }}
-              className="absolute top-5 right-5 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600"
-            >
-              <X className="w-4 h-4" />
-            </button>
-
-            <h3 className="text-lg font-bold text-[var(--card-title)] mb-1">
-              {editStudentTarget ? "Edit Data Siswa PKL" : "Tambah Siswa Baru"}
-            </h3>
-            <p className="text-xs text-[var(--card-subtitle)] mb-4">
-              Isi formulir data induk siswa PKL untuk dipasangkan ke mitra DUDI.
-            </p>
-
-            <form onSubmit={handleSaveStudent} className="space-y-3.5 text-xs">
-              <div>
-                <label className="block font-semibold text-[var(--foreground)] mb-1">
-                  Nama Lengkap Siswa <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={stdName}
-                  onChange={(e) => setStdName(e.target.value)}
-                  placeholder="Contoh: Muhammad Farhan"
-                  className="w-full token-input p-2.5"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-[var(--foreground)] mb-1">
-                  NISN <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={stdNisn}
-                  onChange={(e) => setStdNisn(e.target.value)}
-                  placeholder="Contoh: 0054819299"
-                  className="w-full token-input p-2.5"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-[var(--foreground)] mb-1">Kelas</label>
-                  <input
-                    type="text"
-                    required
-                    value={stdClass}
-                    onChange={(e) => setStdClass(e.target.value)}
-                    className="w-full token-input p-2.5"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-[var(--foreground)] mb-1">Jurusan</label>
-                  <input
-                    type="text"
-                    required
-                    value={stdDept}
-                    onChange={(e) => setStdDept(e.target.value)}
-                    className="w-full token-input p-2.5"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-[var(--foreground)] mb-1">
-                  Penempatan DUDI
-                </label>
-                <select
-                  value={stdDudi}
-                  onChange={(e) => setStdDudi(e.target.value)}
-                  className="w-full token-input p-2.5"
-                >
-                  {dudiList.map((d) => (
-                    <option key={d.id} value={d.name}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex items-center gap-3 pt-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsAddStudentOpen(false);
-                    setEditStudentTarget(null);
-                  }}
-                  className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 font-semibold"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-sm"
-                >
-                  Simpan Data
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <AddStudentModal 
+        isOpen={isAddStudentOpen || !!editStudentTarget} 
+        onClose={() => {
+          setIsAddStudentOpen(false);
+          setEditStudentTarget(null);
+        }} 
+        editTarget={editStudentTarget} 
+      />
 
       {/* CONFIRM DELETE MODAL */}
       {deleteStudentTarget && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <FocusLock>
+        <div 
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setDeleteStudentTarget(null);
+          }}
+        >
           <div className="w-full max-w-sm bg-[var(--card-bg)] border border-[var(--card-border)] rounded-3xl p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150 text-center">
             <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400 flex items-center justify-center mx-auto mb-3">
               <AlertTriangle className="w-6 h-6" />
@@ -434,6 +418,22 @@ export default function DataMasterView() {
             </div>
           </div>
         </div>
+        </FocusLock>
+      )}
+
+      {/* ADD DUDI MODAL */}
+      <AddDudiModal
+        isOpen={isAddDudiOpen}
+        onClose={() => setIsAddDudiOpen(false)}
+      />
+      {/* DUDI QR MODAL */}
+      {qrDudiTarget && (
+        <DudiQrModal
+          isOpen={!!qrDudiTarget}
+          onClose={() => setQrDudiTarget(null)}
+          dudiName={qrDudiTarget.name}
+          qrPayload={qrDudiTarget.qrCode}
+        />
       )}
     </div>
   );

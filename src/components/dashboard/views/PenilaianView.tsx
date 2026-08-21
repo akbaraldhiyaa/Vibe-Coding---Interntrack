@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Search,
   Award,
@@ -11,8 +11,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  Loader2,
 } from "lucide-react";
 import { useInternTrackStore, Student } from "@/shared/store/useInternTrackStore";
+import { CertificateTemplate } from "../components/CertificateTemplate";
+import { useRef } from "react";
+import html2canvas from "html2canvas";
+import { jsPDF } from "jspdf";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -34,6 +39,24 @@ export default function PenilaianView() {
   /* ── Modal State ───────────────────────────────────────────────── */
   const [publishTarget, setPublishTarget] = useState<Student | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  /* ── Certificate Download State ────────────────────────────────── */
+  const [isDownloading, setIsDownloading] = useState<string | null>(null);
+  const [certData, setCertData] = useState<any>(null);
+  const certificateRef = useRef<HTMLDivElement>(null);
+
+  /* ── Handle ESC Key ────────────────────────────────────────────── */
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setPublishTarget(null);
+      }
+    };
+    if (publishTarget) {
+      document.addEventListener("keydown", handleKeyDown);
+    }
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [publishTarget]);
 
   /* ── Derived Data for Cards ────────────────────────────────────── */
   const totalStudents = students.length;
@@ -59,15 +82,16 @@ export default function PenilaianView() {
   );
 
   /* ── Actions ───────────────────────────────────────────────────── */
-  const handleConfirmPublish = () => {
+  const handleConfirmPublish = async () => {
     if (!publishTarget) return;
 
     setIsSubmitting(true);
-    setTimeout(() => {
-      generateCertificate(publishTarget.id);
+    try {
+      await generateCertificate(publishTarget.id);
+    } finally {
       setIsSubmitting(false);
       setPublishTarget(null);
-    }, 600);
+    }
   };
 
   const handleExportCSV = () => {
@@ -95,6 +119,57 @@ export default function PenilaianView() {
     URL.revokeObjectURL(url);
 
     addToast({ type: "success", title: "Export Berhasil", message: "Data laporan telah diunduh sebagai CSV." });
+  };
+
+  const handleDownloadCertificate = async (student: Student) => {
+    if (isDownloading) return;
+    setIsDownloading(student.id);
+
+    const evaluation = evaluations.find((e) => e.studentId === student.id);
+    if (!evaluation || !evaluation.certificateNumber) {
+      setIsDownloading(null);
+      return;
+    }
+
+    // Set data for template
+    setCertData({
+      studentName: student.name,
+      nisn: student.nisn,
+      dudiName: student.dudiName,
+      finalScore: evaluation.finalScore,
+      grade: evaluation.grade,
+      certificateNumber: evaluation.certificateNumber,
+      issuedDate: evaluation.issuedAt || new Date().toISOString().split("T")[0],
+    });
+
+    // Wait a tick for React to render the hidden template
+    setTimeout(async () => {
+      try {
+        if (!certificateRef.current) throw new Error("Template not found");
+        const canvas = await html2canvas(certificateRef.current, {
+          scale: 2, // higher resolution
+          useCORS: true,
+          logging: false,
+        });
+        const imgData = canvas.toDataURL("image/jpeg", 0.9);
+        
+        // A4 landscape dimensions: 297mm x 210mm
+        const pdf = new jsPDF({
+          orientation: "landscape",
+          unit: "mm",
+          format: "a4",
+        });
+        
+        pdf.addImage(imgData, "JPEG", 0, 0, 297, 210);
+        pdf.save(`Sertifikat_${student.name.replace(/\s+/g, "_")}.pdf`);
+        addToast({ type: "success", title: "Berhasil", message: "Sertifikat berhasil diunduh." });
+      } catch (error) {
+        console.error("PDF generation error", error);
+        addToast({ type: "error", title: "Gagal", message: "Gagal mengunduh sertifikat." });
+      } finally {
+        setIsDownloading(null);
+      }
+    }, 100);
   };
 
   /* ══════════════════════════════ RENDER ═══════════════════════════ */
@@ -168,8 +243,81 @@ export default function PenilaianView() {
         {/* ── Divider ──────────────────────────────────────────────── */}
         <div className="border-t border-[var(--table-border)]" />
 
-        {/* ── TABLE ────────────────────────────────────────────────── */}
-        <div className="overflow-x-auto">
+        {/* ── MOBILE CARD VIEW ─────────────────────────────────────── */}
+        <div className="md:hidden divide-y divide-[var(--table-border)]">
+          {paginatedStudents.map((student) => {
+            const evaluation = evaluations.find((e) => e.studentId === student.id);
+            const hasCertificate = !!evaluation?.certificateNumber;
+
+            return (
+              <div key={student.id} className="p-4 space-y-3">
+                <div>
+                  <h3 className="text-sm font-bold text-[var(--foreground)]">{student.name}</h3>
+                  <p className="text-[11px] text-[var(--card-subtitle)] mt-0.5">{student.dudiName}</p>
+                </div>
+                
+                <div className="text-xs space-y-1.5 pt-2 border-t border-[var(--table-border)]">
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500">Tahap</span>
+                    <span className="font-semibold text-[var(--foreground)]">{student.stage}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500">Rata-rata nilai</span>
+                    <span className="font-mono bg-[var(--surface-alt)] px-2 py-0.5 rounded font-bold">
+                      {evaluation ? evaluation.finalScore.toFixed(1) : "—"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500">Sertifikat</span>
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded ${
+                      hasCertificate 
+                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' 
+                        : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                    }`}>
+                      {hasCertificate ? "Terbit" : "Belum terbit"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2 border-t border-[var(--table-border)]">
+                  {hasCertificate ? (
+                    <button
+                      onClick={() => handleDownloadCertificate(student)}
+                      disabled={isDownloading === student.id}
+                      type="button"
+                      className="h-8 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[12px] font-semibold flex items-center gap-1.5 shadow-sm active:scale-[0.98] transition cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
+                    >
+                      {isDownloading === student.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Download className="w-3.5 h-3.5" />
+                      )}
+                      <span>Download</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setPublishTarget(student)}
+                      type="button"
+                      className="h-8 px-3 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-[12px] font-semibold flex items-center gap-1.5 shadow-sm active:scale-[0.98] transition cursor-pointer"
+                    >
+                      <Award className="w-3.5 h-3.5" />
+                      <span>Terbitkan</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {filteredStudents.length === 0 && (
+            <div className="p-8 text-center">
+              <GraduationCap className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
+              <p className="text-sm font-semibold text-[var(--foreground)]">Data tidak ditemukan.</p>
+            </div>
+          )}
+        </div>
+
+        {/* ── DESKTOP TABLE ────────────────────────────────────────── */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-[13px]">
             <thead>
               <tr className="border-b border-[var(--table-border)] text-[var(--card-subtitle)]">
@@ -206,12 +354,17 @@ export default function PenilaianView() {
                     <td className="py-4 px-4 text-right whitespace-nowrap">
                       {hasCertificate ? (
                         <button
+                          onClick={() => handleDownloadCertificate(student)}
+                          disabled={isDownloading === student.id}
                           type="button"
-                          className="h-8 px-3 rounded-lg bg-[var(--surface-alt)] text-[var(--foreground)] text-[12px] font-semibold flex items-center gap-1.5 ml-auto opacity-70 cursor-not-allowed"
-                          disabled
+                          className="h-8 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[12px] font-semibold flex items-center gap-1.5 ml-auto shadow-sm active:scale-[0.98] transition cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
                         >
-                          <FileCheck className="w-3.5 h-3.5" />
-                          <span>Sudah Terbit</span>
+                          {isDownloading === student.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Download className="w-3.5 h-3.5" />
+                          )}
+                          <span>Download</span>
                         </button>
                       ) : (
                         <button
@@ -274,7 +427,12 @@ export default function PenilaianView() {
 
       {/* ═══════════════ PUBLISH CONFIRMATION MODAL ═════════════════ */}
       {publishTarget && (
-        <div className="fixed inset-0 z-50 bg-[var(--modal-overlay)] flex items-center justify-center p-4">
+        <div 
+          className="fixed inset-0 z-50 bg-[var(--modal-overlay)] flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setPublishTarget(null);
+          }}
+        >
           <div className="w-full max-w-sm bg-[var(--modal-bg)] border border-[var(--modal-border)] rounded-2xl p-6 shadow-2xl relative text-center">
             <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center mx-auto mb-4">
               <Award className="w-6 h-6 text-blue-600 dark:text-blue-400" />
@@ -305,6 +463,22 @@ export default function PenilaianView() {
           </div>
         </div>
       )}
+
+      {/* ═══════════════ HIDDEN CERTIFICATE TEMPLATE ═════════════════ */}
+      <div className="absolute left-[-9999px] top-[-9999px] opacity-0 pointer-events-none">
+        {certData && (
+          <CertificateTemplate
+            ref={certificateRef}
+            studentName={certData.studentName}
+            nisn={certData.nisn}
+            dudiName={certData.dudiName}
+            finalScore={certData.finalScore}
+            grade={certData.grade}
+            certificateNumber={certData.certificateNumber}
+            issuedDate={certData.issuedDate}
+          />
+        )}
+      </div>
     </div>
   );
 }

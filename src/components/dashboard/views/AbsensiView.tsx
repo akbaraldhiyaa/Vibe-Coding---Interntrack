@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Search,
   ChevronDown,
@@ -18,8 +18,12 @@ import {
   CalendarDays,
   UserCheck,
   UserX,
+  ScanLine,
 } from "lucide-react";
+import FocusLock from "react-focus-lock";
 import { useInternTrackStore, AttendanceRecord } from "@/shared/store/useInternTrackStore";
+import AddAttendanceModal from "../modals/AddAttendanceModal";
+import QrScannerModal from "../modals/QrScannerModal";
 
 /* ────────────────────────── STATUS CONFIG ────────────────────────── */
 const STATUS_OPTIONS = ["Semua Status", "Hadir", "Terlambat", "Izin", "Sakit", "Tidak Hadir"] as const;
@@ -92,11 +96,8 @@ export default function AbsensiView() {
 
   const isAdmin = currentRole === "Admin" || currentRole === "Guru Pembimbing" || currentRole === "Pembimbing Industri";
 
-  /* ── Simulated loading ─────────────────────────────────────────── */
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
   /* ── Search / filter / pagination ──────────────────────────────── */
+  const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("Semua Status");
   const [currentPage, setCurrentPage] = useState(1);
@@ -107,16 +108,22 @@ export default function AbsensiView() {
   /* ── Modal state ───────────────────────────────────────────────── */
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
 
-  /* ── Form state ────────────────────────────────────────────────── */
-  const [formStudentName, setFormStudentName] = useState("");
-  const [formDudiName, setFormDudiName] = useState("");
-  const [formDate, setFormDate] = useState("");
-  const [formTimeIn, setFormTimeIn] = useState("");
-  const [formTimeOut, setFormTimeOut] = useState("");
-  const [formStatus, setFormStatus] = useState<AttendanceRecord["status"]>("Hadir");
-  const [formNote, setFormNote] = useState("");
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  /* ── Handle ESC Key ────────────────────────────────────────────── */
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsAddModalOpen(false);
+        setEditingRecord(null);
+        setDeleteTarget(null);
+      }
+    };
+    if (isAddModalOpen || editingRecord || deleteTarget) {
+      document.addEventListener("keydown", handleKeyDown);
+    }
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isAddModalOpen, editingRecord, deleteTarget]);
 
   /* ── Derived data ──────────────────────────────────────────────── */
   const filteredRecords = useMemo(() => {
@@ -142,83 +149,14 @@ export default function AbsensiView() {
     };
   }, [attendanceRecords]);
 
-  /* ── Validate form ─────────────────────────────────────────────── */
-  const validateForm = () => {
-    const errors: Record<string, string> = {};
-    if (!formStudentName) errors.studentName = "Nama siswa wajib diisi.";
-    if (!formDudiName) errors.dudiName = "Perusahaan DUDI wajib diisi.";
-    if (!formDate) errors.date = "Tanggal wajib diisi.";
-    if (!formTimeIn) errors.timeIn = "Jam masuk wajib diisi.";
-    setFormErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
   /* ── Open Add Modal ────────────────────────────────────────────── */
   const handleOpenAddModal = () => {
-    setFormStudentName(students[0]?.name || "");
-    setFormDudiName(dudiList[0]?.name || "");
-    setFormDate(new Date().toISOString().split("T")[0]);
-    setFormTimeIn("08:00");
-    setFormTimeOut("16:00");
-    setFormStatus("Hadir");
-    setFormNote("");
-    setFormErrors({});
     setIsAddModalOpen(true);
   };
 
   /* ── Open Edit Modal ───────────────────────────────────────────── */
   const handleOpenEditModal = (record: AttendanceRecord) => {
     setEditingRecord(record);
-    setFormStudentName(record.studentName);
-    setFormDudiName(record.dudiName);
-    setFormDate(record.date || "");
-    setFormTimeIn(record.timeIn || "08:00");
-    setFormTimeOut(record.timeOut || "");
-    setFormStatus(record.status);
-    setFormNote(record.correctionNote || "");
-    setFormErrors({});
-  };
-
-  /* ── Save Add ──────────────────────────────────────────────────── */
-  const handleSaveAdd = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!validateForm()) return;
-
-    setIsSubmitting(true);
-    setTimeout(() => {
-      addAttendanceRecord({
-        studentName: formStudentName,
-        dudiName: formDudiName,
-        date: formDate,
-        timeIn: formTimeIn,
-        timeOut: formTimeOut || "—",
-        status: formStatus,
-        correctionNote: formNote || undefined,
-      });
-      setIsSubmitting(false);
-      setIsAddModalOpen(false);
-    }, 600);
-  };
-
-  /* ── Save Edit ─────────────────────────────────────────────────── */
-  const handleSaveEdit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingRecord || !validateForm()) return;
-
-    setIsSubmitting(true);
-    setTimeout(() => {
-      updateAttendanceRecord(editingRecord.id, {
-        studentName: formStudentName,
-        dudiName: formDudiName,
-        date: formDate,
-        timeIn: formTimeIn,
-        timeOut: formTimeOut || "—",
-        status: formStatus,
-        correctionNote: formNote || undefined,
-      });
-      setIsSubmitting(false);
-      setEditingRecord(null);
-    }, 600);
   };
 
   /* ── Confirm Delete ────────────────────────────────────────────── */
@@ -226,6 +164,38 @@ export default function AbsensiView() {
     if (!deleteTarget) return;
     deleteAttendanceRecord(deleteTarget.id);
     setDeleteTarget(null);
+  };
+
+  /* ── QR Scan Success ───────────────────────────────────────────── */
+  const handleScanSuccess = (dudiId: string, dudiName: string) => {
+    setIsScannerOpen(false);
+
+    // In a real app, we'd know the logged-in student's ID/name.
+    // For this simulation, we'll pick the first student that belongs to this DUDI,
+    // or just use a generic "Siswa Login" name if none match.
+    const myStudent = students.find((s) => s.dudiName === dudiName) || students[0];
+
+    const today = new Date().toISOString().split("T")[0];
+    const now = new Date();
+    const timeIn = now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+
+    // Cek apakah sudah absen hari ini
+    const existing = attendanceRecords.find((r) => r.studentName === myStudent.name && r.date === today);
+
+    if (existing) {
+      addToast({ type: "warning", title: "Sudah Absen", message: "Anda sudah melakukan absensi hari ini." });
+      return;
+    }
+
+    addAttendanceRecord({
+      studentName: myStudent.name,
+      dudiName: dudiName,
+      date: today,
+      timeIn: timeIn,
+      status: "Hadir",
+    });
+
+    addToast({ type: "success", title: "Absen Berhasil", message: `Kehadiran dicatat pukul ${timeIn}` });
   };
 
   /* ── Export CSV ─────────────────────────────────────────────────── */
@@ -349,7 +319,7 @@ export default function AbsensiView() {
             </button>
 
             {/* + Tambah Absensi — primary button */}
-            {isAdmin && (
+            {isAdmin ? (
               <button
                 onClick={handleOpenAddModal}
                 type="button"
@@ -358,6 +328,15 @@ export default function AbsensiView() {
                 <Plus className="w-4 h-4 stroke-[2.5]" />
                 <span>Tambah Absensi</span>
               </button>
+            ) : (
+              <button
+                onClick={() => setIsScannerOpen(true)}
+                type="button"
+                className="h-10 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[13px] font-semibold flex items-center gap-1.5 shadow-sm active:scale-[0.98] transition cursor-pointer"
+              >
+                <ScanLine className="w-4 h-4 stroke-[2.5]" />
+                <span>Scan QR Absensi</span>
+              </button>
             )}
           </div>
         </div>
@@ -365,8 +344,69 @@ export default function AbsensiView() {
         {/* ── Divider ──────────────────────────────────────────────── */}
         <div className="border-t border-[var(--table-border)]" />
 
-        {/* ── TABLE ────────────────────────────────────────────────── */}
-        <div className="overflow-x-auto">
+        {/* ── MOBILE CARD VIEW ─────────────────────────────────────── */}
+        <div className="md:hidden divide-y divide-[var(--table-border)]">
+          {isLoading && Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="p-4 space-y-3 animate-pulse">
+              <div className="flex justify-between items-start">
+                <div className="space-y-2">
+                  <div className="h-4 w-32 bg-[var(--surface-alt)] rounded" />
+                  <div className="h-3 w-24 bg-[var(--surface-alt)] rounded" />
+                </div>
+                <div className="h-5 w-16 bg-[var(--surface-alt)] rounded-full" />
+              </div>
+              <div className="h-4 w-40 bg-[var(--surface-alt)] rounded" />
+            </div>
+          ))}
+          
+          {!isLoading && paginatedRecords.map((rec) => (
+            <div key={rec.id} className="p-4 space-y-3">
+              <div className="flex justify-between items-start">
+                <div>
+                  <div className="font-bold text-[var(--foreground)] text-sm">{rec.studentName}</div>
+                  <div className="text-[11px] text-[var(--card-subtitle)] mt-0.5">{rec.dudiName}</div>
+                </div>
+                <StatusBadge status={rec.status} />
+              </div>
+              
+              <div className="flex justify-between items-center text-xs text-[var(--card-subtitle)]">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono bg-[var(--surface-alt)] px-1.5 py-0.5 rounded text-[10px]">{rec.timeIn || "-"}</span>
+                  <span className="text-[10px]">-</span>
+                  <span className="font-mono bg-[var(--surface-alt)] px-1.5 py-0.5 rounded text-[10px]">{rec.timeOut || "—"}</span>
+                </div>
+                <span className="text-[11px] font-medium">{rec.date || "-"}</span>
+              </div>
+              
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  onClick={() => handleOpenEditModal(rec)}
+                  className="p-1.5 rounded-lg border border-[var(--input-border)] hover:bg-[var(--surface-alt)] text-[var(--card-subtitle)] hover:text-[var(--foreground)] transition cursor-pointer"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+                {isAdmin && (
+                  <button
+                    onClick={() => setDeleteTarget(rec)}
+                    className="p-1.5 rounded-lg border border-red-200 dark:border-red-950 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50 transition cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {!isLoading && attendanceRecords.length === 0 && (
+            <div className="p-8 text-center">
+              <UserCheck className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
+              <p className="text-sm font-semibold text-[var(--foreground)]">Belum ada data</p>
+            </div>
+          )}
+        </div>
+
+        {/* ── DESKTOP TABLE ────────────────────────────────────────── */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-[13px]">
             <thead>
               <tr className="bg-[var(--table-header-bg)] border-b border-[var(--table-border)] text-[var(--card-subtitle)]">
@@ -481,167 +521,33 @@ export default function AbsensiView() {
         </div>
       </div>
 
-      {/* ═══════════════ ADD MODAL ══════════════════════════════════ */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-[var(--modal-overlay)] flex items-center justify-center p-4">
-          <div className="w-full max-w-lg bg-[var(--modal-bg)] border border-[var(--modal-border)] rounded-2xl p-6 shadow-2xl relative">
-            <button onClick={() => setIsAddModalOpen(false)} className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-[var(--surface-alt)] text-[var(--card-subtitle)] cursor-pointer transition"><X className="w-4 h-4" /></button>
+      {/* ═══════════════ ADD / EDIT MODAL ═══════════════════════════ */}
+      <AddAttendanceModal
+        isOpen={isAddModalOpen || !!editingRecord}
+        onClose={() => {
+          setIsAddModalOpen(false);
+          setEditingRecord(null);
+        }}
+        editTarget={editingRecord}
+        isAdmin={isAdmin}
+      />
 
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-10 h-10 rounded-xl bg-[var(--badge-info-bg)] flex items-center justify-center">
-                <Plus className="w-5 h-5 text-[var(--badge-info-text)]" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-[var(--foreground)]">Tambah Absensi</h3>
-                <p className="text-xs text-[var(--card-subtitle)]">Catat kehadiran siswa baru.</p>
-              </div>
-            </div>
+      {/* QR SCANNER MODAL (SISWA) */}
+      <QrScannerModal
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        onScanSuccess={handleScanSuccess}
+      />
 
-            <form onSubmit={handleSaveAdd} className="space-y-4 text-[13px]">
-              {/* Siswa */}
-              <div>
-                <label className="block font-semibold mb-1.5 text-[var(--foreground)]">Nama Siswa <span className="text-red-500">*</span></label>
-                <select value={formStudentName} onChange={(e) => setFormStudentName(e.target.value)} className="w-full h-10 token-input px-3 text-sm">
-                  {students.map((s) => <option key={s.id} value={s.name}>{s.name} ({s.class})</option>)}
-                </select>
-                {formErrors.studentName && <p className="text-red-500 text-xs mt-1">{formErrors.studentName}</p>}
-              </div>
-
-              {/* DUDI */}
-              <div>
-                <label className="block font-semibold mb-1.5 text-[var(--foreground)]">Perusahaan DUDI <span className="text-red-500">*</span></label>
-                <select value={formDudiName} onChange={(e) => setFormDudiName(e.target.value)} className="w-full h-10 token-input px-3 text-sm">
-                  {dudiList.map((d) => <option key={d.id} value={d.name}>{d.name}</option>)}
-                </select>
-                {formErrors.dudiName && <p className="text-red-500 text-xs mt-1">{formErrors.dudiName}</p>}
-              </div>
-
-              {/* Date + TimeIn + TimeOut */}
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block font-semibold mb-1.5 text-[var(--foreground)]">Tanggal <span className="text-red-500">*</span></label>
-                  <input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} className="w-full h-10 token-input px-3 text-sm" />
-                  {formErrors.date && <p className="text-red-500 text-xs mt-1">{formErrors.date}</p>}
-                </div>
-                <div>
-                  <label className="block font-semibold mb-1.5 text-[var(--foreground)]">Jam Masuk <span className="text-red-500">*</span></label>
-                  <input type="time" value={formTimeIn} onChange={(e) => setFormTimeIn(e.target.value)} className="w-full h-10 token-input px-3 text-sm" />
-                  {formErrors.timeIn && <p className="text-red-500 text-xs mt-1">{formErrors.timeIn}</p>}
-                </div>
-                <div>
-                  <label className="block font-semibold mb-1.5 text-[var(--foreground)]">Jam Pulang</label>
-                  <input type="time" value={formTimeOut} onChange={(e) => setFormTimeOut(e.target.value)} className="w-full h-10 token-input px-3 text-sm" />
-                </div>
-              </div>
-
-              {/* Status */}
-              <div>
-                <label className="block font-semibold mb-1.5 text-[var(--foreground)]">Status</label>
-                <select value={formStatus} onChange={(e) => setFormStatus(e.target.value as AttendanceRecord["status"])} className="w-full h-10 token-input px-3 text-sm">
-                  <option value="Hadir">Hadir</option>
-                  <option value="Terlambat">Terlambat</option>
-                  <option value="Izin">Izin</option>
-                  <option value="Sakit">Sakit</option>
-                  <option value="Tidak Hadir">Tidak Hadir</option>
-                </select>
-              </div>
-
-              {/* Catatan */}
-              <div>
-                <label className="block font-semibold mb-1.5 text-[var(--foreground)]">Catatan <span className="text-[var(--card-subtitle)] font-normal">(opsional)</span></label>
-                <textarea value={formNote} onChange={(e) => setFormNote(e.target.value)} rows={2} placeholder="Keterangan tambahan..." className="w-full token-input px-3 py-2.5 text-sm resize-none" />
-              </div>
-
-              {/* Actions */}
-              <div className="flex items-center gap-3 pt-2">
-                <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 h-10 rounded-lg border border-[var(--input-border)] text-[var(--foreground)] font-semibold hover:bg-[var(--surface-alt)] transition cursor-pointer text-sm">
-                  Batal
-                </button>
-                <button type="submit" disabled={isSubmitting} className="flex-1 h-10 rounded-lg bg-[var(--btn-primary-bg)] hover:bg-[var(--btn-primary-hover)] text-white font-semibold shadow-sm transition cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed text-sm flex items-center justify-center gap-2">
-                  {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Menyimpan...</> : "Simpan Absensi"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ═══════════════ EDIT MODAL ═════════════════════════════════ */}
-      {editingRecord && (
-        <div className="fixed inset-0 z-50 bg-[var(--modal-overlay)] flex items-center justify-center p-4">
-          <div className="w-full max-w-lg bg-[var(--modal-bg)] border border-[var(--modal-border)] rounded-2xl p-6 shadow-2xl relative">
-            <button onClick={() => setEditingRecord(null)} className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-[var(--surface-alt)] text-[var(--card-subtitle)] cursor-pointer transition"><X className="w-4 h-4" /></button>
-
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-10 h-10 rounded-xl bg-[var(--badge-warning-bg)] flex items-center justify-center">
-                <Pencil className="w-5 h-5 text-[var(--badge-warning-text)]" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-[var(--foreground)]">Edit Absensi</h3>
-                <p className="text-xs text-[var(--card-subtitle)]">Ubah data kehadiran {editingRecord.studentName}.</p>
-              </div>
-            </div>
-
-            <form onSubmit={handleSaveEdit} className="space-y-4 text-[13px]">
-              <div>
-                <label className="block font-semibold mb-1.5 text-[var(--foreground)]">Nama Siswa</label>
-                <input type="text" value={formStudentName} onChange={(e) => setFormStudentName(e.target.value)} className="w-full h-10 token-input px-3 text-sm" />
-                {formErrors.studentName && <p className="text-red-500 text-xs mt-1">{formErrors.studentName}</p>}
-              </div>
-
-              <div>
-                <label className="block font-semibold mb-1.5 text-[var(--foreground)]">Perusahaan DUDI</label>
-                <input type="text" value={formDudiName} onChange={(e) => setFormDudiName(e.target.value)} className="w-full h-10 token-input px-3 text-sm" />
-                {formErrors.dudiName && <p className="text-red-500 text-xs mt-1">{formErrors.dudiName}</p>}
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block font-semibold mb-1.5 text-[var(--foreground)]">Tanggal</label>
-                  <input type="text" value={formDate} onChange={(e) => setFormDate(e.target.value)} className="w-full h-10 token-input px-3 text-sm" />
-                </div>
-                <div>
-                  <label className="block font-semibold mb-1.5 text-[var(--foreground)]">Jam Masuk</label>
-                  <input type="text" value={formTimeIn} onChange={(e) => setFormTimeIn(e.target.value)} className="w-full h-10 token-input px-3 text-sm" />
-                </div>
-                <div>
-                  <label className="block font-semibold mb-1.5 text-[var(--foreground)]">Jam Pulang</label>
-                  <input type="text" value={formTimeOut} onChange={(e) => setFormTimeOut(e.target.value)} className="w-full h-10 token-input px-3 text-sm" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold mb-1.5 text-[var(--foreground)]">Status</label>
-                <select value={formStatus} onChange={(e) => setFormStatus(e.target.value as AttendanceRecord["status"])} className="w-full h-10 token-input px-3 text-sm">
-                  <option value="Hadir">Hadir</option>
-                  <option value="Terlambat">Terlambat</option>
-                  <option value="Izin">Izin</option>
-                  <option value="Sakit">Sakit</option>
-                  <option value="Tidak Hadir">Tidak Hadir</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-semibold mb-1.5 text-[var(--foreground)]">Catatan <span className="text-[var(--card-subtitle)] font-normal">(opsional)</span></label>
-                <textarea value={formNote} onChange={(e) => setFormNote(e.target.value)} rows={2} placeholder="Keterangan tambahan..." className="w-full token-input px-3 py-2.5 text-sm resize-none" />
-              </div>
-
-              <div className="flex items-center gap-3 pt-2">
-                <button type="button" onClick={() => setEditingRecord(null)} className="flex-1 h-10 rounded-lg border border-[var(--input-border)] text-[var(--foreground)] font-semibold hover:bg-[var(--surface-alt)] transition cursor-pointer text-sm">
-                  Batal
-                </button>
-                <button type="submit" disabled={isSubmitting} className="flex-1 h-10 rounded-lg bg-[var(--btn-primary-bg)] hover:bg-[var(--btn-primary-hover)] text-white font-semibold shadow-sm transition cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed text-sm flex items-center justify-center gap-2">
-                  {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Menyimpan...</> : "Simpan Perubahan"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ═══════════════ DELETE CONFIRMATION ════════════════════════ */}
+      {/* ═══════════════ CONFIRM DELETE MODAL ═══════════════════════ */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 bg-[var(--modal-overlay)] flex items-center justify-center p-4">
+        <FocusLock>
+        <div 
+          className="fixed inset-0 z-50 bg-[var(--modal-overlay)] flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setDeleteTarget(null);
+          }}
+        >
           <div className="w-full max-w-sm bg-[var(--modal-bg)] border border-[var(--modal-border)] rounded-2xl p-6 shadow-2xl text-center">
             <div className="w-12 h-12 rounded-full bg-red-50 dark:bg-red-950/30 flex items-center justify-center mx-auto mb-4">
               <AlertTriangle className="w-6 h-6 text-red-500" />
@@ -660,6 +566,7 @@ export default function AbsensiView() {
             </div>
           </div>
         </div>
+        </FocusLock>
       )}
     </div>
   );

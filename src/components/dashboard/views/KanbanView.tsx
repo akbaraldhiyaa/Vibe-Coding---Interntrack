@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   KanbanSquare,
   Search,
@@ -16,7 +16,21 @@ import { useInternTrackStore, KanbanStage, Student } from "@/shared/store/useInt
 
 export default function KanbanView() {
   const { students, moveKanbanStage, searchQuery, setSearchQuery } = useInternTrackStore();
+  const [statusFilter, setStatusFilter] = useState("Semua");
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+
+  /* ── Handle ESC Key ────────────────────────────────────────────── */
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setSelectedStudent(null);
+      }
+    };
+    if (selectedStudent) {
+      document.addEventListener("keydown", handleKeyDown);
+    }
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [selectedStudent]);
 
   const stages: KanbanStage[] = [
     "Pendaftaran & Pembekalan",
@@ -27,9 +41,10 @@ export default function KanbanView() {
 
   const filteredStudents = students.filter(
     (s) =>
-      s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       s.dudiName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.class.toLowerCase().includes(searchQuery.toLowerCase())
+      s.class.toLowerCase().includes(searchQuery.toLowerCase())) &&
+      (statusFilter === "Semua" || s.status === statusFilter)
   );
 
   return (
@@ -122,11 +137,17 @@ export default function KanbanView() {
                     </div>
 
                     <div className="flex items-center gap-3">
-                      <img
-                        src={std.avatar}
-                        alt={std.name}
-                        className="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-200"
-                      />
+                      {std.avatar ? (
+                        <img
+                          src={std.avatar}
+                          alt={std.name}
+                          className="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-200"
+                        />
+                      ) : (
+                        <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-xs shrink-0 border border-slate-200">
+                          {std.name.substring(0, 2).toUpperCase()}
+                        </div>
+                      )}
                       <div className="min-w-0 flex-1">
                         <h4 className="text-xs font-bold text-[var(--card-title)] truncate group-hover:text-blue-600 transition-colors">
                           {std.name}
@@ -188,7 +209,12 @@ export default function KanbanView() {
 
       {/* STUDENT DETAIL MODAL / DRAWER */}
       {selectedStudent && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div 
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setSelectedStudent(null);
+          }}
+        >
           <div className="w-full max-w-md bg-[var(--card-bg)] border border-[var(--card-border)] rounded-3xl p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150 relative">
             <button
               onClick={() => setSelectedStudent(null)}

@@ -1,5 +1,12 @@
-import AuthPage from "@/components/AuthPage";
+import { redirect } from "next/navigation";
+import { getServerAuthSession } from "@/lib/auth";
 
-export default function Home() {
-  return <AuthPage />;
+export default async function Home() {
+  const session = await getServerAuthSession();
+
+  if (session?.user) {
+    redirect("/dashboard");
+  } else {
+    redirect("/login");
+  }
 }

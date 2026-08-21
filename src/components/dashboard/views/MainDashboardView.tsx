@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   Users,
   Building2,
@@ -33,6 +34,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 
 export default function MainDashboardView() {
+  const router = useRouter();
   const {
     students,
     dudiList,
@@ -40,7 +42,6 @@ export default function MainDashboardView() {
     journals,
     searchQuery,
     setSearchQuery,
-    setRoute,
     currentRole,
   } = useInternTrackStore();
 
@@ -53,6 +54,20 @@ export default function MainDashboardView() {
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [tooltipData, setTooltipData] = useState<{ show: boolean, data: { name: string, count: number, percent: string } | null, isKeyboard: boolean }>({ show: false, data: null, isKeyboard: false });
 
+  // Handle ESC key for modals
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setSelectedStudentModal(null);
+        setIsNotifModalOpen(false);
+      }
+    };
+    if (selectedStudentModal || isNotifModalOpen) {
+      document.addEventListener("keydown", handleKeyDown);
+    }
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [selectedStudentModal, isNotifModalOpen]);
+
   const handleChartMouseMove = (e: React.MouseEvent) => {
     if (tooltipRef.current && !tooltipData.isKeyboard) {
       tooltipRef.current.style.left = `${e.clientX + 15}px`;
@@ -61,11 +76,17 @@ export default function MainDashboardView() {
   };
 
   // 1. Data Metric Calculation (Strict Consistency with Summary Cards & Charts)
-  const totalStudents = students.length; // 11
-  const activeCount = students.filter((s) => s.status === "Aktif").length; // 6
-  const pembekalanCount = students.filter((s) => s.status === "Pembekalan").length; // 3
-  const completedCount = students.filter((s) => s.status === "Selesai").length; // 1
-  const issueCount = students.filter((s) => s.status === "Bermasalah").length; // 1
+  const totalStudents = students.length;
+  const activeCount = students.filter((s) => s.status === "Aktif").length;
+  const pembekalanCount = students.filter((s) => s.status === "Pembekalan").length;
+  const completedCount = students.filter((s) => s.status === "Selesai").length;
+  const issueCount = students.filter((s) => s.status === "Bermasalah").length;
+
+  const activePct = totalStudents > 0 ? (activeCount / totalStudents) * 100 : 0;
+  const pembekalanPct = totalStudents > 0 ? (pembekalanCount / totalStudents) * 100 : 0;
+  const completedPct = totalStudents > 0 ? (completedCount / totalStudents) * 100 : 0;
+  const issuePct = totalStudents > 0 ? (issueCount / totalStudents) * 100 : 0;
+  const progressPct = totalStudents > 0 ? Math.round(((activeCount + completedCount) / totalStudents) * 100) : 0;
 
   const activeDudiCount = dudiList.length;
   const pendingJournalsCount = journals.filter((j) => j.status === "Menunggu verifikasi").length;
@@ -95,7 +116,7 @@ export default function MainDashboardView() {
     })
     .slice(0, 5);
 
-  // TODO: If the table data comes from a paginated API in the future, sort only the currently visible page.
+  // Sort handler
   const handleSort = (key: "name" | "attendance" | "stage") => {
     let newDirection: "asc" | "desc" | null = null;
     if (sortConfig.key === key) {
@@ -120,57 +141,28 @@ export default function MainDashboardView() {
     );
   };
 
-  // Activity Feed combining Recent Journals & Attendance (Max 6 activities)
-  const activityFeed = [
-    {
-      id: "act-1",
-      date: "05 Agu 2026",
-      studentName: "Dita Ariyanti",
-      type: "Jurnal",
-      description: "Menyusun UI komponen dashboard InternTrack",
-      status: "Terverifikasi",
-    },
-    {
-      id: "act-2",
-      date: "05 Agu 2026",
-      studentName: "Fitri Handayani",
-      type: "Jurnal",
-      description: "Dokumentasi foto aktivitas & laporan visual",
-      status: "Menunggu Review",
-    },
-    {
-      id: "act-3",
-      date: "04 Agu 2026",
-      studentName: "Galih Pramudito",
-      type: "Jurnal",
-      description: "Konfigurasi jaringan LAN kantor Telkom",
-      status: "Terverifikasi",
-    },
-    {
-      id: "act-4",
-      date: "04 Agu 2026",
-      studentName: "Eko Wibowo",
-      type: "Jurnal",
-      description: "Perawatan perangkat komputer bimbingan",
-      status: "Terverifikasi",
-    },
-    {
-      id: "act-5",
-      date: "05 Agu 2026",
-      studentName: "Dita Ariyanti",
-      type: "Absensi",
-      description: "Hadir - Masuk 08:02 (Scan QR DUDI)",
-      status: "Hadir",
-    },
-    {
-      id: "act-6",
-      date: "05 Agu 2026",
-      studentName: "Galih Pramudito",
-      type: "Absensi",
-      description: "Hadir - Masuk 08:04 (Scan QR DUDI)",
-      status: "Hadir",
-    },
-  ];
+  // Activity Feed combining Recent Journals & Attendance (Max 6 activities dynamically derived from DB)
+  const activityFeed = useMemo(() => {
+    const journalActivities = journals.map((j) => ({
+      id: `act-j-${j.id}`,
+      date: j.date || "-",
+      studentName: j.studentName,
+      type: "Jurnal" as const,
+      description: j.title ? `${j.title} — ${j.description}` : j.description,
+      status: j.status,
+    }));
+
+    const attendanceActivities = attendanceRecords.map((a) => ({
+      id: `act-a-${a.id}`,
+      date: a.date || "-",
+      studentName: a.studentName,
+      type: "Absensi" as const,
+      description: `${a.status}${a.timeIn ? ` - Masuk ${a.timeIn}` : ""}${a.dudiName ? ` (${a.dudiName})` : ""}${a.correctionNote ? ` [${a.correctionNote}]` : ""}`,
+      status: a.status,
+    }));
+
+    return [...journalActivities, ...attendanceActivities].slice(0, 6);
+  }, [journals, attendanceRecords]);
 
   // Helper for Student Initial Avatar
   const getInitials = (name: string) => {
@@ -196,7 +188,7 @@ export default function MainDashboardView() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Total Siswa PKL */}
         <div
-          onClick={() => setRoute("master-data")}
+          onClick={() => router.push("/dashboard/data-master")}
           className="p-5 rounded-2xl bg-[var(--card-bg)] border border-[var(--card-border)] shadow-[var(--card-shadow)] flex flex-col justify-between cursor-pointer hover:border-slate-300 dark:hover:border-slate-700 transition"
         >
           <div className="flex items-start justify-between">
@@ -214,7 +206,7 @@ export default function MainDashboardView() {
 
         {/* Card 2: Sedang Berjalan */}
         <div
-          onClick={() => setRoute("kanban")}
+          onClick={() => router.push("/dashboard/kanban")}
           className="p-5 rounded-2xl bg-[var(--card-bg)] border border-[var(--card-border)] shadow-[var(--card-shadow)] flex flex-col justify-between cursor-pointer hover:border-slate-300 dark:hover:border-slate-700 transition"
         >
           <div className="flex items-start justify-between">
@@ -232,7 +224,7 @@ export default function MainDashboardView() {
 
         {/* Card 3: Jurnal Menunggu Review */}
         <div
-          onClick={() => setRoute("jurnal")}
+          onClick={() => router.push("/dashboard/jurnal")}
           className="p-5 rounded-2xl bg-[var(--card-bg)] border border-[var(--card-border)] shadow-[var(--card-shadow)] flex flex-col justify-between cursor-pointer hover:border-slate-300 dark:hover:border-slate-700 transition"
         >
           <div className="flex items-start justify-between">
@@ -250,7 +242,7 @@ export default function MainDashboardView() {
 
         {/* Card 4: Total Mitra DUDI */}
         <div
-          onClick={() => setRoute("master-data")}
+          onClick={() => router.push("/dashboard/data-master")}
           className="p-5 rounded-2xl bg-[var(--card-bg)] border border-[var(--card-border)] shadow-[var(--card-shadow)] flex flex-col justify-between cursor-pointer hover:border-slate-300 dark:hover:border-slate-700 transition"
         >
           <div className="flex items-start justify-between">
@@ -288,114 +280,122 @@ export default function MainDashboardView() {
                   {/* Background Track Circle */}
                   <circle cx="18" cy="18" r="15.9155" fill="none" stroke="var(--surface-alt)" strokeWidth="3.5" />
                   
-                  {/* Segment 1: Aktif (Blue - 6/11 = 54.5%) */}
-                  <circle
-                    cx="18"
-                    cy="18"
-                    r="15.9155"
-                    fill="none"
-                    stroke="#1E3A8A"
-                    strokeWidth="3.5"
-                    strokeDasharray="54.5, 100"
-                    strokeDashoffset="0"
-                    tabIndex={0}
-                    className="focus:outline-none focus:ring-2 focus:ring-[#1E3A8A] cursor-pointer"
-                    onMouseEnter={(e) => {
-                      setTooltipData({ show: true, data: { name: 'Aktif', count: activeCount, percent: '54.5' }, isKeyboard: false });
-                      if (tooltipRef.current) {
-                        tooltipRef.current.style.left = `${e.clientX + 15}px`;
-                        tooltipRef.current.style.top = `${e.clientY + 15}px`;
-                      }
-                    }}
-                    onMouseMove={handleChartMouseMove}
-                    onMouseLeave={() => setTooltipData(prev => ({ ...prev, show: false }))}
-                    onFocus={() => setTooltipData({ show: true, data: { name: 'Aktif', count: activeCount, percent: '54.5' }, isKeyboard: true })}
-                    onBlur={() => setTooltipData(prev => ({ ...prev, show: false }))}
-                    aria-describedby="chart-tooltip"
-                  >
-                    <title>{`Aktif: ${activeCount} siswa (54.5%)`}</title>
-                  </circle>
-                  {/* Segment 2: Pembekalan (Amber - 3/11 = 27.2%) */}
-                  <circle
-                    cx="18"
-                    cy="18"
-                    r="15.9155"
-                    fill="none"
-                    stroke="#F59E0B"
-                    strokeWidth="3.5"
-                    strokeDasharray="27.2, 100"
-                    strokeDashoffset="-54.5"
-                    tabIndex={0}
-                    className="focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
-                    onMouseEnter={(e) => {
-                      setTooltipData({ show: true, data: { name: 'Pembekalan', count: pembekalanCount, percent: '27.2' }, isKeyboard: false });
-                      if (tooltipRef.current) {
-                        tooltipRef.current.style.left = `${e.clientX + 15}px`;
-                        tooltipRef.current.style.top = `${e.clientY + 15}px`;
-                      }
-                    }}
-                    onMouseMove={handleChartMouseMove}
-                    onMouseLeave={() => setTooltipData(prev => ({ ...prev, show: false }))}
-                    onFocus={() => setTooltipData({ show: true, data: { name: 'Pembekalan', count: pembekalanCount, percent: '27.2' }, isKeyboard: true })}
-                    onBlur={() => setTooltipData(prev => ({ ...prev, show: false }))}
-                    aria-describedby="chart-tooltip"
-                  >
-                    <title>{`Pembekalan: ${pembekalanCount} siswa (27.2%)`}</title>
-                  </circle>
-                  {/* Segment 3: Selesai (Emerald - 1/11 = 9.1%) */}
-                  <circle
-                    cx="18"
-                    cy="18"
-                    r="15.9155"
-                    fill="none"
-                    stroke="#10B981"
-                    strokeWidth="3.5"
-                    strokeDasharray="9.1, 100"
-                    strokeDashoffset="-81.7"
-                    tabIndex={0}
-                    className="focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
-                    onMouseEnter={(e) => {
-                      setTooltipData({ show: true, data: { name: 'Selesai', count: completedCount, percent: '9.1' }, isKeyboard: false });
-                      if (tooltipRef.current) {
-                        tooltipRef.current.style.left = `${e.clientX + 15}px`;
-                        tooltipRef.current.style.top = `${e.clientY + 15}px`;
-                      }
-                    }}
-                    onMouseMove={handleChartMouseMove}
-                    onMouseLeave={() => setTooltipData(prev => ({ ...prev, show: false }))}
-                    onFocus={() => setTooltipData({ show: true, data: { name: 'Selesai', count: completedCount, percent: '9.1' }, isKeyboard: true })}
-                    onBlur={() => setTooltipData(prev => ({ ...prev, show: false }))}
-                    aria-describedby="chart-tooltip"
-                  >
-                    <title>{`Selesai: ${completedCount} siswa (9.1%)`}</title>
-                  </circle>
-                  {/* Segment 4: Bermasalah (Red - 1/11 = 9.1%) */}
-                  <circle
-                    cx="18"
-                    cy="18"
-                    r="15.9155"
-                    fill="none"
-                    stroke="#EF4444"
-                    strokeWidth="3.5"
-                    strokeDasharray="9.1, 100"
-                    strokeDashoffset="-90.8"
-                    tabIndex={0}
-                    className="focus:outline-none focus:ring-2 focus:ring-red-500 cursor-pointer"
-                    onMouseEnter={(e) => {
-                      setTooltipData({ show: true, data: { name: 'Bermasalah', count: issueCount, percent: '9.1' }, isKeyboard: false });
-                      if (tooltipRef.current) {
-                        tooltipRef.current.style.left = `${e.clientX + 15}px`;
-                        tooltipRef.current.style.top = `${e.clientY + 15}px`;
-                      }
-                    }}
-                    onMouseMove={handleChartMouseMove}
-                    onMouseLeave={() => setTooltipData(prev => ({ ...prev, show: false }))}
-                    onFocus={() => setTooltipData({ show: true, data: { name: 'Bermasalah', count: issueCount, percent: '9.1' }, isKeyboard: true })}
-                    onBlur={() => setTooltipData(prev => ({ ...prev, show: false }))}
-                    aria-describedby="chart-tooltip"
-                  >
-                    <title>{`Bermasalah: ${issueCount} siswa (9.1%)`}</title>
-                  </circle>
+                  {/* Segment 1: Aktif */}
+                  {activeCount > 0 && (
+                    <circle
+                      cx="18"
+                      cy="18"
+                      r="15.9155"
+                      fill="none"
+                      stroke="#1E3A8A"
+                      strokeWidth="3.5"
+                      strokeDasharray={`${activePct.toFixed(1)}, 100`}
+                      strokeDashoffset="0"
+                      tabIndex={0}
+                      className="focus:outline-none focus:ring-2 focus:ring-[#1E3A8A] cursor-pointer"
+                      onMouseEnter={(e) => {
+                        setTooltipData({ show: true, data: { name: 'Aktif', count: activeCount, percent: activePct.toFixed(1) }, isKeyboard: false });
+                        if (tooltipRef.current) {
+                          tooltipRef.current.style.left = `${e.clientX + 15}px`;
+                          tooltipRef.current.style.top = `${e.clientY + 15}px`;
+                        }
+                      }}
+                      onMouseMove={handleChartMouseMove}
+                      onMouseLeave={() => setTooltipData(prev => ({ ...prev, show: false }))}
+                      onFocus={() => setTooltipData({ show: true, data: { name: 'Aktif', count: activeCount, percent: activePct.toFixed(1) }, isKeyboard: true })}
+                      onBlur={() => setTooltipData(prev => ({ ...prev, show: false }))}
+                      aria-describedby="chart-tooltip"
+                    >
+                      <title>{`Aktif: ${activeCount} siswa (${activePct.toFixed(1)}%)`}</title>
+                    </circle>
+                  )}
+                  {/* Segment 2: Pembekalan */}
+                  {pembekalanCount > 0 && (
+                    <circle
+                      cx="18"
+                      cy="18"
+                      r="15.9155"
+                      fill="none"
+                      stroke="#F59E0B"
+                      strokeWidth="3.5"
+                      strokeDasharray={`${pembekalanPct.toFixed(1)}, 100`}
+                      strokeDashoffset={`${(-activePct).toFixed(1)}`}
+                      tabIndex={0}
+                      className="focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                      onMouseEnter={(e) => {
+                        setTooltipData({ show: true, data: { name: 'Pembekalan', count: pembekalanCount, percent: pembekalanPct.toFixed(1) }, isKeyboard: false });
+                        if (tooltipRef.current) {
+                          tooltipRef.current.style.left = `${e.clientX + 15}px`;
+                          tooltipRef.current.style.top = `${e.clientY + 15}px`;
+                        }
+                      }}
+                      onMouseMove={handleChartMouseMove}
+                      onMouseLeave={() => setTooltipData(prev => ({ ...prev, show: false }))}
+                      onFocus={() => setTooltipData({ show: true, data: { name: 'Pembekalan', count: pembekalanCount, percent: pembekalanPct.toFixed(1) }, isKeyboard: true })}
+                      onBlur={() => setTooltipData(prev => ({ ...prev, show: false }))}
+                      aria-describedby="chart-tooltip"
+                    >
+                      <title>{`Pembekalan: ${pembekalanCount} siswa (${pembekalanPct.toFixed(1)}%)`}</title>
+                    </circle>
+                  )}
+                  {/* Segment 3: Selesai */}
+                  {completedCount > 0 && (
+                    <circle
+                      cx="18"
+                      cy="18"
+                      r="15.9155"
+                      fill="none"
+                      stroke="#10B981"
+                      strokeWidth="3.5"
+                      strokeDasharray={`${completedPct.toFixed(1)}, 100`}
+                      strokeDashoffset={`${(-(activePct + pembekalanPct)).toFixed(1)}`}
+                      tabIndex={0}
+                      className="focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                      onMouseEnter={(e) => {
+                        setTooltipData({ show: true, data: { name: 'Selesai', count: completedCount, percent: completedPct.toFixed(1) }, isKeyboard: false });
+                        if (tooltipRef.current) {
+                          tooltipRef.current.style.left = `${e.clientX + 15}px`;
+                          tooltipRef.current.style.top = `${e.clientY + 15}px`;
+                        }
+                      }}
+                      onMouseMove={handleChartMouseMove}
+                      onMouseLeave={() => setTooltipData(prev => ({ ...prev, show: false }))}
+                      onFocus={() => setTooltipData({ show: true, data: { name: 'Selesai', count: completedCount, percent: completedPct.toFixed(1) }, isKeyboard: true })}
+                      onBlur={() => setTooltipData(prev => ({ ...prev, show: false }))}
+                      aria-describedby="chart-tooltip"
+                    >
+                      <title>{`Selesai: ${completedCount} siswa (${completedPct.toFixed(1)}%)`}</title>
+                    </circle>
+                  )}
+                  {/* Segment 4: Bermasalah */}
+                  {issueCount > 0 && (
+                    <circle
+                      cx="18"
+                      cy="18"
+                      r="15.9155"
+                      fill="none"
+                      stroke="#EF4444"
+                      strokeWidth="3.5"
+                      strokeDasharray={`${issuePct.toFixed(1)}, 100`}
+                      strokeDashoffset={`${(-(activePct + pembekalanPct + completedPct)).toFixed(1)}`}
+                      tabIndex={0}
+                      className="focus:outline-none focus:ring-2 focus:ring-red-500 cursor-pointer"
+                      onMouseEnter={(e) => {
+                        setTooltipData({ show: true, data: { name: 'Bermasalah', count: issueCount, percent: issuePct.toFixed(1) }, isKeyboard: false });
+                        if (tooltipRef.current) {
+                          tooltipRef.current.style.left = `${e.clientX + 15}px`;
+                          tooltipRef.current.style.top = `${e.clientY + 15}px`;
+                        }
+                      }}
+                      onMouseMove={handleChartMouseMove}
+                      onMouseLeave={() => setTooltipData(prev => ({ ...prev, show: false }))}
+                      onFocus={() => setTooltipData({ show: true, data: { name: 'Bermasalah', count: issueCount, percent: issuePct.toFixed(1) }, isKeyboard: true })}
+                      onBlur={() => setTooltipData(prev => ({ ...prev, show: false }))}
+                      aria-describedby="chart-tooltip"
+                    >
+                      <title>{`Bermasalah: ${issueCount} siswa (${issuePct.toFixed(1)}%)`}</title>
+                    </circle>
+                  )}
                 </svg>
 
                 {/* Donut Center Label */}
@@ -459,27 +459,27 @@ export default function MainDashboardView() {
           {/* Horizontal Progress Bar */}
           <div className="pt-4 border-t border-[var(--card-border)]">
             <div className="flex justify-between text-xs font-semibold text-[var(--card-subtitle)] mb-2">
-              <span>Progres Angkatan — 60% Berjalan</span>
+              <span>Progres Angkatan — {progressPct}% Berjalan</span>
             </div>
             <div className="w-full h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 flex overflow-hidden mb-3">
-              <div style={{ width: "54.5%" }} className="bg-[#1E3A8A] h-full" title="Aktif" />
-              <div style={{ width: "27.2%" }} className="bg-amber-500 h-full" title="Pembekalan" />
-              <div style={{ width: "9.1%" }} className="bg-emerald-500 h-full" title="Selesai" />
-              <div style={{ width: "9.1%" }} className="bg-red-500 h-full" title="Bermasalah" />
+              <div style={{ width: `${activePct}%` }} className="bg-[#1E3A8A] h-full transition-all duration-300" title="Aktif" />
+              <div style={{ width: `${pembekalanPct}%` }} className="bg-amber-500 h-full transition-all duration-300" title="Pembekalan" />
+              <div style={{ width: `${completedPct}%` }} className="bg-emerald-500 h-full transition-all duration-300" title="Selesai" />
+              <div style={{ width: `${issuePct}%` }} className="bg-red-500 h-full transition-all duration-300" title="Bermasalah" />
             </div>
             {/* Progress Segment Labels */}
             <div className="flex items-center gap-4 text-[10px] font-semibold text-[var(--text-muted)] flex-wrap">
               <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-[#1E3A8A]" /> Aktif (54.5%)
+                <span className="w-2 h-2 rounded-full bg-[#1E3A8A]" /> Aktif ({activePct.toFixed(1)}%)
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-amber-500" /> Pembekalan (27.2%)
+                <span className="w-2 h-2 rounded-full bg-amber-500" /> Pembekalan ({pembekalanPct.toFixed(1)}%)
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-500" /> Selesai (9.1%)
+                <span className="w-2 h-2 rounded-full bg-emerald-500" /> Selesai ({completedPct.toFixed(1)}%)
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-red-500" /> Bermasalah (9.1%)
+                <span className="w-2 h-2 rounded-full bg-red-500" /> Bermasalah ({issuePct.toFixed(1)}%)
               </div>
             </div>
           </div>
@@ -540,7 +540,7 @@ export default function MainDashboardView() {
           <div className="pt-4 border-t border-[var(--card-border)] flex items-center justify-between">
             {attentionStudents.length > 0 ? (
               <button
-                onClick={() => setRoute("absensi")}
+                onClick={() => router.push("/dashboard/absensi")}
                 type="button"
                 className="py-2 px-3 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs transition"
               >
@@ -552,7 +552,7 @@ export default function MainDashboardView() {
             )}
 
             <button
-              onClick={() => setRoute("absensi")}
+              onClick={() => router.push("/dashboard/absensi")}
               type="button"
               className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
             >
@@ -595,9 +595,9 @@ export default function MainDashboardView() {
             </div>
 
             <button
-              onClick={() => setRoute("master-data")}
+              onClick={() => router.push("/dashboard/data-master")}
               type="button"
-              className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer whitespace-nowrap hidden sm:flex"
+              className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer whitespace-nowrap"
             >
               <span>Lihat semua</span>
               <ChevronRight className="w-3.5 h-3.5" />
@@ -723,11 +723,6 @@ export default function MainDashboardView() {
         {/* Pagination UI Mock */}
         <div className="flex items-center justify-between pt-4 border-t border-[var(--card-border)] text-xs text-[var(--card-subtitle)] font-medium">
           <p>Menampilkan {filteredStudents.length} dari {students.length} siswa</p>
-          <div className="flex items-center gap-1">
-            <button className="px-3 py-1.5 rounded-lg border border-[var(--card-border)] hover:bg-[var(--surface-alt)] cursor-not-allowed opacity-50">Sebelumnya</button>
-            <button className="px-3 py-1.5 rounded-lg bg-blue-600 text-white font-bold cursor-pointer">1</button>
-            <button className="px-3 py-1.5 rounded-lg border border-[var(--card-border)] hover:bg-[var(--surface-alt)] cursor-pointer">Selanjutnya</button>
-          </div>
         </div>
       </div>
 
@@ -762,7 +757,7 @@ export default function MainDashboardView() {
             </div>
 
             <button
-              onClick={() => setRoute("jurnal")}
+              onClick={() => router.push("/dashboard/jurnal")}
               type="button"
               className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer hidden sm:flex"
             >
@@ -806,6 +801,17 @@ export default function MainDashboardView() {
                   </td>
                 </tr>
               ))}
+
+              {activityFeed.filter(a => activityTab === "Semua" || a.type === activityTab).length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-[var(--text-muted)] text-xs font-medium">
+                    <div className="flex flex-col items-center justify-center">
+                      <Inbox className="w-8 h-8 text-slate-300 dark:text-slate-600 mb-2" />
+                      Belum ada aktivitas {activityTab !== "Semua" ? activityTab.toLowerCase() : ""} tercatat.
+                    </div>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -813,7 +819,12 @@ export default function MainDashboardView() {
 
       {/* STUDENT DETAIL MODAL */}
       {selectedStudentModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div 
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setSelectedStudentModal(null);
+          }}
+        >
           <div className="w-full max-w-md bg-[var(--card-bg)] border border-[var(--card-border)] rounded-3xl p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150 relative">
             <button
               onClick={() => setSelectedStudentModal(null)}
@@ -872,7 +883,12 @@ export default function MainDashboardView() {
 
       {/* NOTIFICATIONS MODAL / DROPDOWN */}
       {isNotifModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div 
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsNotifModalOpen(false);
+          }}
+        >
           <div className="w-full max-w-sm bg-[var(--card-bg)] border border-[var(--card-border)] rounded-3xl p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150 relative">
             <button
               onClick={() => setIsNotifModalOpen(false)}
@@ -889,7 +905,7 @@ export default function MainDashboardView() {
             <div className="space-y-3 mb-6">
               <div
                 onClick={() => {
-                  setRoute("absensi");
+                  router.push("/dashboard/absensi");
                   setIsNotifModalOpen(false);
                 }}
                 className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2.5 cursor-pointer"
@@ -903,7 +919,7 @@ export default function MainDashboardView() {
 
               <div
                 onClick={() => {
-                  setRoute("jurnal");
+                  router.push("/dashboard/jurnal");
                   setIsNotifModalOpen(false);
                 }}
                 className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 text-xs text-blue-900 dark:text-blue-200 flex items-start gap-2.5 cursor-pointer"
@@ -931,8 +947,8 @@ export default function MainDashboardView() {
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#181D27] text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-5">
           <span className="text-sm font-semibold">{selectedStudents.length} dipilih</span>
           <div className="w-px h-4 bg-slate-700" />
-          <button className="text-sm font-semibold hover:text-slate-600 cursor-pointer">Ekspor</button>
-          <button className="text-sm font-semibold hover:text-slate-600 cursor-pointer">Tandai</button>
+          <button className="text-sm font-semibold hover:text-[var(--foreground)] cursor-pointer">Ekspor</button>
+          <button className="text-sm font-semibold hover:text-[var(--foreground)] cursor-pointer">Tandai</button>
           <button onClick={() => setSelectedStudents([])} className="text-sm font-semibold text-[var(--text-muted)] hover:text-white cursor-pointer ml-2">Tutup</button>
         </div>
       )}

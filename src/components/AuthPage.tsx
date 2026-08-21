@@ -1,6 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { signIn, useSession } from "next-auth/react";
+import { useInternTrackStore } from "@/shared/store/useInternTrackStore";
+import { registerUser } from "@/app/actions/auth";
 import {
   GraduationCap,
   User,
@@ -10,14 +14,41 @@ import {
   EyeOff,
   ChevronDown,
   CheckCircle2,
+  AlertCircle,
   Loader2,
 } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 import OnboardingPage from "./OnboardingPage";
-import DashboardShell from "./dashboard/DashboardShell";
 
 export default function AuthPage() {
-  const [authMode, setAuthMode] = useState<"auth" | "forgot-password" | "onboarding" | "dashboard">("dashboard");
+  const router = useRouter();
+  const { data: session, status } = useSession();
+  const { userProfile, updateUserProfile } = useInternTrackStore();
+
+  const [authMode, setAuthMode] = useState<"auth" | "forgot-password" | "onboarding">("auth");
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (status === "authenticated" && session?.user) {
+      setIsGoogleLoading(false);
+      setIsLoading(false);
+      // Sync user with our local store
+      if (userProfile.email !== session.user.email) {
+        updateUserProfile({
+          email: session.user.email || "",
+          fullName: session.user.name || "",
+        });
+      }
+      router.push("/dashboard");
+    } else if (status === "unauthenticated") {
+      setAuthMode("auth");
+      setIsGoogleLoading(false);
+      setIsLoading(false);
+    }
+  }, [status, session, userProfile.email, updateUserProfile, router]);
+
   const [activeTab, setActiveTab] = useState<"masuk" | "daftar">("masuk");
   const [showPassword, setShowPassword] = useState(false);
 
@@ -35,17 +66,89 @@ export default function AuthPage() {
 
   const isValidEmail = (emailStr: string) => /\S+@\S+\.\S+/.test(emailStr.trim());
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitted(true);
-    setTimeout(() => {
-      setIsSubmitted(false);
-      if (activeTab === "daftar") {
-        setAuthMode("onboarding");
+    setAuthError(null);
+
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setAuthError("Email wajib diisi.");
+      return;
+    }
+    if (!isValidEmail(trimmedEmail)) {
+      setAuthError("Format email tidak valid.");
+      return;
+    }
+    if (!password) {
+      setAuthError("Kata sandi wajib diisi.");
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      if (activeTab === "masuk") {
+        const res = await signIn("credentials", {
+          email: trimmedEmail.toLowerCase(),
+          password,
+          redirect: false,
+        });
+
+        if (res?.error || !res?.ok) {
+          setAuthError("Email atau kata sandi salah.");
+          setIsLoading(false);
+          return;
+        }
+
+        setIsSubmitted(true);
       } else {
-        setAuthMode("dashboard");
+        // Register tab
+        const trimmedFullName = fullName.trim();
+        if (!trimmedFullName || trimmedFullName.length < 3) {
+          setAuthError("Nama lengkap minimal 3 karakter.");
+          setIsLoading(false);
+          return;
+        }
+        if (password.length < 6) {
+          setAuthError("Kata sandi minimal 6 karakter.");
+          setIsLoading(false);
+          return;
+        }
+
+        const regRes = await registerUser({
+          fullName: trimmedFullName,
+          email: trimmedEmail,
+          password,
+          role,
+        });
+
+        if (!regRes.success) {
+          setAuthError(regRes.error || "Gagal membuat akun.");
+          setIsLoading(false);
+          return;
+        }
+
+        // Automatically sign in
+        const res = await signIn("credentials", {
+          email: trimmedEmail.toLowerCase(),
+          password,
+          redirect: false,
+        });
+
+        if (res?.error || !res?.ok) {
+          setAuthError("Akun berhasil dibuat. Silakan masuk.");
+          setActiveTab("masuk");
+          setIsLoading(false);
+          return;
+        }
+
+        setIsSubmitted(true);
+        setAuthMode("onboarding");
       }
-    }, 1200);
+    } catch (err: any) {
+      setAuthError("Terjadi kesalahan pada sistem. Silakan coba lagi.");
+      setIsLoading(false);
+    }
   };
 
   const handleForgotSubmit = (e: React.FormEvent) => {
@@ -59,8 +162,12 @@ export default function AuthPage() {
     }, 1500);
   };
 
-  if (authMode === "dashboard") {
-    return <DashboardShell onLogout={() => setAuthMode("auth")} />;
+  if (status === "loading") {
+    return (
+      <div className="min-h-screen bg-[var(--background)] flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+      </div>
+    );
   }
 
   if (authMode === "onboarding") {
@@ -68,15 +175,15 @@ export default function AuthPage() {
       <OnboardingPage
         onBackToAuth={() => setAuthMode("auth")}
         onComplete={() => {
-          setAuthMode("dashboard");
+          router.push("/dashboard");
         }}
       />
     );
   }
 
   return (
-    <div className="min-h-screen w-full flex flex-col lg:flex-row bg-[var(--background)] text-[var(--foreground)] transition-colors duration-300 relative">
-      <div className="absolute top-4 right-4 z-50">
+    <div suppressHydrationWarning className="min-h-screen w-full flex flex-col lg:flex-row bg-[var(--background)] text-[var(--foreground)] transition-colors duration-300 relative">
+      <div suppressHydrationWarning className="absolute top-4 right-4 z-50">
         <ThemeToggle showLabel />
       </div>
 
@@ -95,7 +202,7 @@ export default function AuthPage() {
             <h2 className="text-base font-bold tracking-tight text-white leading-tight">
               InternTrack
             </h2>
-            <p className="text-xs text-slate-600 font-normal">SMKN 3 Jakarta</p>
+            <p className="text-xs text-slate-400 font-normal">SMKN 3 Jakarta</p>
           </div>
         </div>
 
@@ -104,7 +211,7 @@ export default function AuthPage() {
           <h1 className="text-3xl sm:text-4xl lg:text-[42px] font-bold text-white leading-[1.2] tracking-tight">
             Satu tempat untuk seluruh siklus PKL
           </h1>
-          <p className="text-slate-600 text-sm sm:text-base leading-relaxed mt-4 font-normal max-w-lg">
+          <p className="text-slate-400 text-sm sm:text-base leading-relaxed mt-4 font-normal max-w-lg">
             Penempatan, absensi QR, jurnal harian, penilaian, hingga sertifikat
             terpantau real-time oleh sekolah, pembimbing, dan industri.
           </p>
@@ -127,13 +234,13 @@ export default function AuthPage() {
         </div>
 
         {/* Bottom Footer */}
-        <div className="relative z-10 text-xs text-slate-600 font-normal pt-6 lg:pt-0">
+        <div suppressHydrationWarning className="relative z-10 text-xs text-slate-400 font-normal pt-6 lg:pt-0">
           © 2026 InternTrack. Semua data terenkripsi.
         </div>
       </div>
 
       {/* RIGHT PANEL - AUTHENTICATION CARD / FORGOT PASSWORD CARD */}
-      <div className="w-full lg:w-1/2 flex flex-col items-center justify-center p-4 sm:p-8 lg:p-12 min-h-screen">
+      <div className="w-full lg:w-1/2 flex flex-col items-center justify-center p-4 sm:p-8 lg:p-12 min-h-[100dvh] lg:min-h-screen py-12 lg:py-0">
         {authMode === "auth" ? (
           /* LOGIN / REGISTER CARD */
           <div className="w-full max-w-[440px] bg-[var(--card-bg)] border border-[var(--card-border)] rounded-2xl sm:rounded-3xl p-6 sm:p-9 shadow-[var(--card-shadow)] transition-all">
@@ -152,28 +259,39 @@ export default function AuthPage() {
             {/* Social Sign-in Button */}
             <button
               type="button"
-              className="w-full flex items-center justify-center gap-3 py-2.5 px-4 rounded-xl bg-[var(--btn-secondary-bg)] hover:bg-[var(--btn-secondary-hover)] text-[var(--btn-secondary-text)] border border-[var(--btn-secondary-border)] text-sm font-semibold active:scale-[0.99] transition-all cursor-pointer"
+              onClick={() => {
+                setIsGoogleLoading(true);
+                signIn("google");
+              }}
+              disabled={isGoogleLoading}
+              className={`w-full flex items-center justify-center gap-3 py-2.5 px-4 rounded-xl bg-[var(--btn-secondary-bg)] hover:bg-[var(--btn-secondary-hover)] text-[var(--btn-secondary-text)] border border-[var(--btn-secondary-border)] text-sm font-semibold transition-all ${
+                isGoogleLoading ? "opacity-70 cursor-not-allowed" : "active:scale-[0.99] cursor-pointer"
+              }`}
             >
-              {/* Multicolor Google G Logo SVG */}
-              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-                <path
-                  fill="#4285F4"
-                  d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.29v3.15C3.26 21.3 7.31 24 12 24z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.29C.47 8.21 0 10.05 0 12s.47 3.79 1.29 5.42l3.99-3.15z"
-                />
-                <path
-                  fill="#EA4335"
-                  d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.58l3.99 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
-                />
-              </svg>
-              <span>Lanjutkan dengan Google</span>
+              {isGoogleLoading ? (
+                <Loader2 className="w-4 h-4 shrink-0 animate-spin" />
+              ) : (
+                /* Multicolor Google G Logo SVG */
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.29v3.15C3.26 21.3 7.31 24 12 24z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.29C.47 8.21 0 10.05 0 12s.47 3.79 1.29 5.42l3.99-3.15z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.58l3.99 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
+                  />
+                </svg>
+              )}
+              <span>{isGoogleLoading ? "Memproses..." : "Lanjutkan dengan Google"}</span>
             </button>
 
             {/* Divider */}
@@ -188,7 +306,10 @@ export default function AuthPage() {
             <div className="bg-[var(--tab-bg)] p-1 rounded-full flex items-center mb-6">
               <button
                 type="button"
-                onClick={() => setActiveTab("masuk")}
+                onClick={() => {
+                  setActiveTab("masuk");
+                  setAuthError(null);
+                }}
                 className={`flex-1 py-2 rounded-full text-sm font-medium transition-all text-center cursor-pointer ${
                   activeTab === "masuk"
                     ? "bg-[var(--tab-active-bg)] text-[var(--tab-active-text)] shadow-[var(--tab-active-shadow)] font-semibold"
@@ -199,7 +320,10 @@ export default function AuthPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setActiveTab("daftar")}
+                onClick={() => {
+                  setActiveTab("daftar");
+                  setAuthError(null);
+                }}
                 className={`flex-1 py-2 rounded-full text-sm font-medium transition-all text-center cursor-pointer ${
                   activeTab === "daftar"
                     ? "bg-[var(--tab-active-bg)] text-[var(--tab-active-text)] shadow-[var(--tab-active-shadow)] font-semibold"
@@ -209,6 +333,14 @@ export default function AuthPage() {
                 Daftar
               </button>
             </div>
+
+            {/* Error Alert */}
+            {authError && (
+              <div className="mb-5 p-3.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 text-red-700 dark:text-red-300 text-xs font-medium flex items-center gap-2.5 animate-fadeIn">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-600 dark:text-red-400" />
+                <span>{authError}</span>
+              </div>
+            )}
 
             {/* Success Toast / Notification */}
             {isSubmitted && (
@@ -238,7 +370,10 @@ export default function AuthPage() {
                       type="text"
                       required
                       value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
+                      onChange={(e) => {
+                        setFullName(e.target.value);
+                        if (authError) setAuthError(null);
+                      }}
                       placeholder="Nama Lengkap"
                       className="w-full token-input pl-10 pr-3.5 py-2.5 text-sm"
                     />
@@ -259,7 +394,10 @@ export default function AuthPage() {
                     type="email"
                     required
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (authError) setAuthError(null);
+                    }}
                     placeholder="Email"
                     className="w-full token-input pl-10 pr-3.5 py-2.5 text-sm"
                   />
@@ -293,7 +431,10 @@ export default function AuthPage() {
                     type={showPassword ? "text" : "password"}
                     required
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (authError) setAuthError(null);
+                    }}
                     placeholder="••••••••"
                     className="w-full token-input pl-10 pr-10 py-2.5 text-sm"
                   />
@@ -347,9 +488,17 @@ export default function AuthPage() {
               <div className="pt-2">
                 <button
                   type="submit"
-                  className="w-full token-btn-primary py-3 px-4 shadow-sm text-sm font-semibold tracking-wide cursor-pointer"
+                  disabled={isLoading}
+                  className="w-full token-btn-primary py-3 px-4 shadow-sm text-sm font-semibold tracking-wide cursor-pointer flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
                 >
-                  {activeTab === "masuk" ? "Masuk" : "Buat akun"}
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>{activeTab === "masuk" ? "Memverifikasi..." : "Mendaftarkan..."}</span>
+                    </>
+                  ) : (
+                    <span>{activeTab === "masuk" ? "Masuk" : "Buat akun"}</span>
+                  )}
                 </button>
               </div>
             </form>

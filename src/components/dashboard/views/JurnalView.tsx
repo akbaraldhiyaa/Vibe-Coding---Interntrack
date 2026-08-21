@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Search,
   ChevronDown,
@@ -9,11 +9,10 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
-  X,
   BookOpen,
-  Loader2
 } from "lucide-react";
 import { useInternTrackStore, JournalEntry } from "@/shared/store/useInternTrackStore";
+import AddJournalModal from "../modals/AddJournalModal";
 
 const ITEMS_PER_PAGE = 10;
 const STATUS_OPTIONS = ["Semua status", "Menunggu verifikasi", "Terverifikasi", "Perlu revisi"] as const;
@@ -41,16 +40,21 @@ export default function JurnalView() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<JournalEntry | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<JournalEntry | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [formStudentName, setFormStudentName] = useState("");
-  const [formDudiName, setFormDudiName] = useState("");
-  const [formDate, setFormDate] = useState("");
-  const [formWorkHours, setFormWorkHours] = useState(8);
-  const [formTitle, setFormTitle] = useState("");
-  const [formDescription, setFormDescription] = useState("");
-  const [formStatus, setFormStatus] = useState<JournalEntry["status"]>("Menunggu verifikasi");
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  /* ── Handle ESC Key ────────────────────────────────────────────── */
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsAddModalOpen(false);
+        setEditingRecord(null);
+        setDeleteTarget(null);
+      }
+    };
+    if (isAddModalOpen || editingRecord || deleteTarget) {
+      document.addEventListener("keydown", handleKeyDown);
+    }
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isAddModalOpen, editingRecord, deleteTarget]);
 
   /* ── Derived Data ──────────────────────────────────────────────── */
   const filteredJournals = useMemo(() => {
@@ -65,84 +69,14 @@ export default function JurnalView() {
   const totalPages = Math.max(1, Math.ceil(filteredJournals.length / ITEMS_PER_PAGE));
   const paginatedJournals = filteredJournals.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  /* ── Form Validation ───────────────────────────────────────────── */
-  const validateForm = () => {
-    const errors: Record<string, string> = {};
-    if (!formStudentName) errors.studentName = "Nama siswa wajib diisi.";
-    if (!formDudiName) errors.dudiName = "Perusahaan DUDI wajib diisi.";
-    if (!formDate) errors.date = "Tanggal wajib diisi.";
-    if (!formTitle) errors.title = "Judul wajib diisi.";
-    if (!formDescription) errors.description = "Isi jurnal wajib diisi.";
-    setFormErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
   /* ── Add Modal ─────────────────────────────────────────────────── */
   const handleOpenAddModal = () => {
-    const defaultStudent = students[0];
-    setFormStudentName(defaultStudent?.name || "");
-    setFormDudiName(dudiList.find((d) => d.name === defaultStudent?.dudiName)?.name || dudiList[0]?.name || "");
-    setFormDate(new Date().toISOString().split("T")[0]);
-    setFormWorkHours(8);
-    setFormTitle("");
-    setFormDescription("");
-    setFormStatus("Menunggu verifikasi");
-    setFormErrors({});
     setIsAddModalOpen(true);
-  };
-
-  const handleSaveAdd = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!validateForm()) return;
-
-    setIsSubmitting(true);
-    setTimeout(() => {
-      const student = students.find((s) => s.name === formStudentName);
-      addJournalEntry({
-        studentId: student?.id || `std-${Date.now()}`,
-        studentName: formStudentName,
-        dudiName: formDudiName,
-        date: formDate,
-        workHours: formWorkHours,
-        title: formTitle,
-        description: formDescription,
-      });
-      setIsSubmitting(false);
-      setIsAddModalOpen(false);
-    }, 600);
   };
 
   /* ── Edit Modal ────────────────────────────────────────────────── */
   const handleOpenEditModal = (record: JournalEntry) => {
     setEditingRecord(record);
-    setFormStudentName(record.studentName);
-    setFormDudiName(record.dudiName);
-    setFormDate(record.date);
-    setFormWorkHours(record.workHours);
-    setFormTitle(record.title);
-    setFormDescription(record.description);
-    setFormStatus(record.status);
-    setFormErrors({});
-  };
-
-  const handleSaveEdit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingRecord || !validateForm()) return;
-
-    setIsSubmitting(true);
-    setTimeout(() => {
-      updateJournalEntry(editingRecord.id, {
-        studentName: formStudentName,
-        dudiName: formDudiName,
-        date: formDate,
-        workHours: formWorkHours,
-        title: formTitle,
-        description: formDescription,
-        status: formStatus,
-      });
-      setIsSubmitting(false);
-      setEditingRecord(null);
-    }, 600);
   };
 
   /* ── Delete Action ─────────────────────────────────────────────── */
@@ -336,151 +270,25 @@ export default function JurnalView() {
         </div>
       </div>
 
-      {/* ═══════════════ ADD MODAL ══════════════════════════════════ */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-[var(--modal-overlay)] flex items-center justify-center p-4">
-          <div className="w-full max-w-lg bg-[var(--modal-bg)] border border-[var(--modal-border)] rounded-2xl p-6 shadow-2xl relative">
-            <button onClick={() => setIsAddModalOpen(false)} className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-[var(--surface-alt)] text-[var(--card-subtitle)] cursor-pointer transition"><X className="w-4 h-4" /></button>
-
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-10 h-10 rounded-xl bg-[var(--badge-info-bg)] flex items-center justify-center">
-                <Plus className="w-5 h-5 text-[var(--badge-info-text)]" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-[var(--foreground)]">Tambah Jurnal</h3>
-                <p className="text-xs text-[var(--card-subtitle)]">Catat kegiatan harian siswa.</p>
-              </div>
-            </div>
-
-            <form onSubmit={handleSaveAdd} className="space-y-4 text-[13px]">
-              <div>
-                <label className="block font-semibold mb-1.5 text-[var(--foreground)]">Nama Siswa</label>
-                <select value={formStudentName} onChange={(e) => setFormStudentName(e.target.value)} className="w-full h-10 token-input px-3 text-sm">
-                  {students.map((s) => <option key={s.id} value={s.name}>{s.name} ({s.class})</option>)}
-                </select>
-                {formErrors.studentName && <p className="text-red-500 text-xs mt-1">{formErrors.studentName}</p>}
-              </div>
-
-              <div>
-                <label className="block font-semibold mb-1.5 text-[var(--foreground)]">Perusahaan DUDI</label>
-                <select value={formDudiName} onChange={(e) => setFormDudiName(e.target.value)} className="w-full h-10 token-input px-3 text-sm">
-                  {dudiList.map((d) => <option key={d.id} value={d.name}>{d.name}</option>)}
-                </select>
-                {formErrors.dudiName && <p className="text-red-500 text-xs mt-1">{formErrors.dudiName}</p>}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold mb-1.5 text-[var(--foreground)]">Tanggal</label>
-                  <input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} className="w-full h-10 token-input px-3 text-sm" />
-                  {formErrors.date && <p className="text-red-500 text-xs mt-1">{formErrors.date}</p>}
-                </div>
-                <div>
-                  <label className="block font-semibold mb-1.5 text-[var(--foreground)]">Durasi (Jam)</label>
-                  <input type="number" min="1" max="12" value={formWorkHours} onChange={(e) => setFormWorkHours(Number(e.target.value))} className="w-full h-10 token-input px-3 text-sm" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold mb-1.5 text-[var(--foreground)]">Judul Kegiatan</label>
-                <input type="text" value={formTitle} onChange={(e) => setFormTitle(e.target.value)} placeholder="Contoh: Menyusun UI komponen" className="w-full h-10 token-input px-3 text-sm" />
-                {formErrors.title && <p className="text-red-500 text-xs mt-1">{formErrors.title}</p>}
-              </div>
-
-              <div>
-                <label className="block font-semibold mb-1.5 text-[var(--foreground)]">Isi Kegiatan</label>
-                <textarea value={formDescription} onChange={(e) => setFormDescription(e.target.value)} rows={3} placeholder="Deskripsikan pekerjaan yang dilakukan..." className="w-full token-input px-3 py-2.5 text-sm resize-none" />
-                {formErrors.description && <p className="text-red-500 text-xs mt-1">{formErrors.description}</p>}
-              </div>
-
-              <div className="flex items-center gap-3 pt-2">
-                <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 h-10 rounded-lg border border-[var(--input-border)] text-[var(--foreground)] font-semibold hover:bg-[var(--surface-alt)] transition cursor-pointer text-sm">
-                  Batal
-                </button>
-                <button type="submit" disabled={isSubmitting} className="flex-1 h-10 rounded-lg bg-[var(--btn-primary-bg)] hover:bg-[var(--btn-primary-hover)] text-white font-semibold shadow-sm transition cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed text-sm flex items-center justify-center gap-2">
-                  {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Menyimpan...</> : "Simpan Jurnal"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ═══════════════ EDIT MODAL ═════════════════════════════════ */}
-      {editingRecord && (
-        <div className="fixed inset-0 z-50 bg-[var(--modal-overlay)] flex items-center justify-center p-4">
-          <div className="w-full max-w-lg bg-[var(--modal-bg)] border border-[var(--modal-border)] rounded-2xl p-6 shadow-2xl relative">
-            <button onClick={() => setEditingRecord(null)} className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-[var(--surface-alt)] text-[var(--card-subtitle)] cursor-pointer transition"><X className="w-4 h-4" /></button>
-
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-10 h-10 rounded-xl bg-[var(--badge-warning-bg)] flex items-center justify-center">
-                <Pencil className="w-5 h-5 text-[var(--badge-warning-text)]" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-[var(--foreground)]">Edit Jurnal</h3>
-                <p className="text-xs text-[var(--card-subtitle)]">Ubah data jurnal {editingRecord.studentName}.</p>
-              </div>
-            </div>
-
-            <form onSubmit={handleSaveEdit} className="space-y-4 text-[13px]">
-              <div>
-                <label className="block font-semibold mb-1.5 text-[var(--foreground)]">Nama Siswa</label>
-                <input type="text" value={formStudentName} onChange={(e) => setFormStudentName(e.target.value)} className="w-full h-10 token-input px-3 text-sm" />
-              </div>
-
-              <div>
-                <label className="block font-semibold mb-1.5 text-[var(--foreground)]">Perusahaan DUDI</label>
-                <input type="text" value={formDudiName} onChange={(e) => setFormDudiName(e.target.value)} className="w-full h-10 token-input px-3 text-sm" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold mb-1.5 text-[var(--foreground)]">Tanggal</label>
-                  <input type="text" value={formDate} onChange={(e) => setFormDate(e.target.value)} className="w-full h-10 token-input px-3 text-sm" />
-                </div>
-                <div>
-                  <label className="block font-semibold mb-1.5 text-[var(--foreground)]">Durasi (Jam)</label>
-                  <input type="number" min="1" max="12" value={formWorkHours} onChange={(e) => setFormWorkHours(Number(e.target.value))} className="w-full h-10 token-input px-3 text-sm" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold mb-1.5 text-[var(--foreground)]">Judul Kegiatan</label>
-                <input type="text" value={formTitle} onChange={(e) => setFormTitle(e.target.value)} className="w-full h-10 token-input px-3 text-sm" />
-              </div>
-
-              <div>
-                <label className="block font-semibold mb-1.5 text-[var(--foreground)]">Isi Kegiatan</label>
-                <textarea value={formDescription} onChange={(e) => setFormDescription(e.target.value)} rows={3} className="w-full token-input px-3 py-2.5 text-sm resize-none" />
-              </div>
-              
-              {isAdmin && (
-                <div>
-                  <label className="block font-semibold mb-1.5 text-[var(--foreground)]">Status Verifikasi</label>
-                  <select value={formStatus} onChange={(e) => setFormStatus(e.target.value as JournalEntry["status"])} className="w-full h-10 token-input px-3 text-sm font-semibold">
-                    <option value="Menunggu verifikasi">Menunggu verifikasi</option>
-                    <option value="Terverifikasi">Terverifikasi</option>
-                    <option value="Perlu revisi">Perlu revisi</option>
-                  </select>
-                </div>
-              )}
-
-              <div className="flex items-center gap-3 pt-2">
-                <button type="button" onClick={() => setEditingRecord(null)} className="flex-1 h-10 rounded-lg border border-[var(--input-border)] text-[var(--foreground)] font-semibold hover:bg-[var(--surface-alt)] transition cursor-pointer text-sm">
-                  Batal
-                </button>
-                <button type="submit" disabled={isSubmitting} className="flex-1 h-10 rounded-lg bg-[var(--btn-primary-bg)] hover:bg-[var(--btn-primary-hover)] text-white font-semibold shadow-sm transition cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed text-sm flex items-center justify-center gap-2">
-                  {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Menyimpan...</> : "Simpan Perubahan"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* ═══════════════ ADD / EDIT MODAL ═══════════════════════════ */}
+      <AddJournalModal
+        isOpen={isAddModalOpen || !!editingRecord}
+        onClose={() => {
+          setIsAddModalOpen(false);
+          setEditingRecord(null);
+        }}
+        editTarget={editingRecord}
+        isAdmin={isAdmin}
+      />
 
       {/* ═══════════════ DELETE CONFIRMATION ════════════════════════ */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 bg-[var(--modal-overlay)] flex items-center justify-center p-4">
+        <div 
+          className="fixed inset-0 z-50 bg-[var(--modal-overlay)] flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setDeleteTarget(null);
+          }}
+        >
           <div className="w-full max-w-sm bg-[var(--modal-bg)] border border-[var(--modal-border)] rounded-2xl p-6 shadow-2xl text-center">
             <h3 className="text-base font-bold text-[var(--foreground)] mb-1">Hapus Jurnal?</h3>
             <p className="text-sm text-[var(--card-subtitle)] mb-5">

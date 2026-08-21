@@ -1,6 +1,12 @@
 "use client";
 
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { addStudent as addStudentDB, deleteStudent as deleteStudentDB, updateStudent as updateStudentDB, updateStudentStage as updateStudentStageDB } from "@/app/actions/students";
+import { addDudi as addDudiDB, deleteDudi as deleteDudiDB, updateDudi as updateDudiDB } from "@/app/actions/dudi";
+import { addAttendance as addAttendanceDB, deleteAttendance as deleteAttendanceDB, updateAttendance as updateAttendanceDB } from "@/app/actions/attendance";
+import { addJournal as addJournalDB, deleteJournal as deleteJournalDB, updateJournal as updateJournalDB, updateJournalStatus as updateJournalStatusDB } from "@/app/actions/journal";
+import { addEvaluation as addEvaluationDB, updateEvaluation as updateEvaluationDB, issueCertificateDB } from "@/app/actions/evaluation";
 
 export type Role = "Admin" | "Guru Pembimbing" | "Pembimbing Industri" | "Siswa" | "Kepala Sekolah";
 
@@ -116,6 +122,15 @@ interface InternTrackState {
   currentRole: Role;
   searchQuery: string;
   isSidebarOpen: boolean;
+  userProfile: {
+    fullName: string;
+    email: string;
+    whatsapp: string;
+    institution: string;
+    department: string;
+    notificationEmail: boolean;
+    weeklySummary: boolean;
+  };
 
   // Data Collections
   students: Student[];
@@ -127,10 +142,13 @@ interface InternTrackState {
   notifications: NotificationItem[];
 
   // Action Handlers
+  initData: (data: Partial<InternTrackState>) => void;
   setRoute: (route: RoutePath) => void;
   setRole: (role: Role) => void;
   setSearchQuery: (query: string) => void;
   toggleSidebar: () => void;
+  closeSidebar: () => void;
+  updateUserProfile: (profile: Partial<InternTrackState["userProfile"]>) => void;
 
   // CRUD Actions
   addStudent: (student: Omit<Student, "id">) => void;
@@ -154,7 +172,7 @@ interface InternTrackState {
   reviewJournal: (id: string, status: JournalEntry["status"], feedback?: string, reviewerName?: string) => void;
 
   submitEvaluation: (evaluation: Omit<Evaluation, "id" | "finalScore" | "grade">) => void;
-  generateCertificate: (studentId: string) => string;
+  generateCertificate: (studentId: string) => Promise<string> | string;
 
   // Notification Toast Actions
   addToast: (toast: Omit<ToastMessage, "id">) => void;
@@ -165,481 +183,226 @@ interface InternTrackState {
   deleteNotification: (id: string) => void;
 }
 
-// Seed Data (11 Students total to match Dashboard 1 data model)
-const initialStudents: Student[] = [
-  {
-    id: "std-1",
-    nisn: "0054819231",
-    name: "Aulia Rahmawati",
-    class: "XII RPL 1",
-    department: "Rekayasa Perangkat Lunak",
-    dudiName: "PT Sinar Data Nusantara",
-    schoolSupervisor: "Bpk. Hendra Wijaya, S.Kom",
-    industrySupervisor: "Ibu Maya Kartika",
-    stage: "Pendaftaran & Pembekalan",
-    status: "Pembekalan",
-    avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150",
-    whatsapp: "081234567890",
-    email: "aulia@smkn3.sch.id",
-    attendanceRate: 100,
-    journalCount: 0,
-  },
-  {
-    id: "std-2",
-    nisn: "0054819232",
-    name: "Bagas Prayoga",
-    class: "XII RPL 2",
-    department: "Rekayasa Perangkat Lunak",
-    dudiName: "CV Mitra Kreatif",
-    schoolSupervisor: "Bpk. Hendra Wijaya, S.Kom",
-    industrySupervisor: "Bpk. Budi Santoso",
-    stage: "Pendaftaran & Pembekalan",
-    status: "Pembekalan",
-    avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150",
-    whatsapp: "082198765432",
-    email: "bagas@smkn3.sch.id",
-    attendanceRate: 100,
-    journalCount: 0,
-  },
-  {
-    id: "std-3",
-    nisn: "0054819233",
-    name: "Citra Kusuma",
-    class: "XII TKJ 1",
-    department: "Teknik Komputer & Jaringan",
-    dudiName: "Studio Piksel",
-    schoolSupervisor: "Ibu Rahmawati, M.Pd",
-    industrySupervisor: "Bpk. Dian Sastro",
-    stage: "Pendaftaran & Pembekalan",
-    status: "Pembekalan",
-    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=150",
-    whatsapp: "085712345678",
-    email: "citra@smkn3.sch.id",
-    attendanceRate: 100,
-    journalCount: 0,
-  },
-  {
-    id: "std-4",
-    nisn: "0054819234",
-    name: "Dita Ariyanti",
-    class: "XII RPL 2",
-    department: "Rekayasa Perangkat Lunak",
-    dudiName: "PT Lumin Studio",
-    schoolSupervisor: "Bpk. Hendra Wijaya, S.Kom",
-    industrySupervisor: "Bpk. Irfan Maulana",
-    stage: "Pelaksanaan (DUDI)",
-    status: "Aktif",
-    avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=150",
-    whatsapp: "081211223344",
-    email: "dita@smkn3.sch.id",
-    attendanceRate: 98,
-    journalCount: 22,
-  },
-  {
-    id: "std-5",
-    nisn: "0054819235",
-    name: "Eko Wibowo",
-    class: "XII TKJ 1",
-    department: "Teknik Komputer & Jaringan",
-    dudiName: "PT Jala Net",
-    schoolSupervisor: "Bpk. Hendra Wijaya, S.Kom",
-    industrySupervisor: "Bpk. Ari Wibowo",
-    stage: "Pelaksanaan (DUDI)",
-    status: "Aktif",
-    avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=150",
-    whatsapp: "081544556677",
-    email: "eko@smkn3.sch.id",
-    attendanceRate: 96,
-    journalCount: 18,
-  },
-  {
-    id: "std-6",
-    nisn: "0054819236",
-    name: "Fitri Handayani",
-    class: "XII MM 2",
-    department: "Multimedia",
-    dudiName: "Studio Piksel",
-    schoolSupervisor: "Ibu Rahmawati, M.Pd",
-    industrySupervisor: "Ibu Siska Amelia",
-    stage: "Pelaksanaan (DUDI)",
-    status: "Aktif",
-    avatar: "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?auto=format&fit=crop&q=80&w=150",
-    whatsapp: "081322334455",
-    email: "fitri@smkn3.sch.id",
-    attendanceRate: 94,
-    journalCount: 20,
-  },
-  {
-    id: "std-7",
-    nisn: "0054819237",
-    name: "Galih Pramudito",
-    class: "XII TKJ 2",
-    department: "Teknik Komputer & Jaringan",
-    dudiName: "PT Sinar Data Nusantara",
-    schoolSupervisor: "Ibu Rahmawati, M.Pd",
-    industrySupervisor: "Bpk. Dian Sastro",
-    stage: "Pelaksanaan (DUDI)",
-    status: "Aktif",
-    avatar: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&q=80&w=150",
-    whatsapp: "081433445566",
-    email: "galih@smkn3.sch.id",
-    attendanceRate: 97,
-    journalCount: 28,
-  },
-  {
-    id: "std-8",
-    nisn: "0054819238",
-    name: "Hana Salsabila",
-    class: "XII MM 1",
-    department: "Multimedia",
-    dudiName: "KAP Anugarah",
-    schoolSupervisor: "Ibu Rahmawati, M.Pd",
-    industrySupervisor: "Ibu Siska Amelia",
-    stage: "Penilaian & Review",
-    status: "Aktif",
-    avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&q=80&w=150",
-    whatsapp: "081908070605",
-    email: "hana@smkn3.sch.id",
-    attendanceRate: 99,
-    journalCount: 32,
-  },
-  {
-    id: "std-9",
-    nisn: "0054819239",
-    name: "Eko Wibowo",
-    class: "XII TKJ 1",
-    department: "Teknik Komputer & Jaringan",
-    dudiName: "PT Network Solution",
-    schoolSupervisor: "Bpk. Hendra Wijaya, S.Kom",
-    industrySupervisor: "Bpk. Ari Wibowo",
-    stage: "Pendaftaran & Pembekalan",
-    status: "Pembekalan",
-    avatar: "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&q=80&w=150",
-    whatsapp: "081544556677",
-    email: "eko.wibowo@smkn3.sch.id",
-    attendanceRate: 88,
-    journalCount: 4,
-  },
-  {
-    id: "std-10",
-    nisn: "0054819240",
-    name: "Hendra Gunawan",
-    class: "XII RPL 1",
-    department: "Rekayasa Perangkat Lunak",
-    dudiName: "CV Creative Digital",
-    schoolSupervisor: "Bpk. Hendra Wijaya, S.Kom",
-    industrySupervisor: "Bpk. Budi Santoso",
-    stage: "Pendaftaran & Pembekalan",
-    status: "Pembekalan",
-    avatar: "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=150",
-    whatsapp: "081655667788",
-    email: "hendra.gunawan@smkn3.sch.id",
-    attendanceRate: 92,
-    journalCount: 6,
-  },
-  {
-    id: "std-11",
-    nisn: "0054819241",
-    name: "Indah Permata",
-    class: "XII MM 1",
-    department: "Multimedia",
-    dudiName: "Studio Anima Media",
-    schoolSupervisor: "Ibu Rahmawati, M.Pd",
-    industrySupervisor: "Ibu Siska Amelia",
-    stage: "Selesai & Sertifikasi",
-    status: "Selesai",
-    avatar: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&q=80&w=150",
-    whatsapp: "081766778899",
-    email: "indah.permata@smkn3.sch.id",
-    attendanceRate: 99,
-    journalCount: 35,
-  },
-];
-
-const initialDudiList: Dudi[] = [
-  {
-    id: "dudi-1",
-    name: "PT Technology Nusantara",
-    address: "Jl. Sudirman No. 45, Jakarta Selatan",
-    industrySupervisor: "Ibu Maya Kartika",
-    quota: 10,
-    activeStudents: 5,
-    qrCode: "QR-TECH-NUSANTARA-2026",
-  },
-  {
-    id: "dudi-2",
-    name: "CV Creative Digital",
-    address: "Jl. Gatot Subroto No. 12, Jakarta Selatan",
-    industrySupervisor: "Bpk. Budi Santoso",
-    quota: 6,
-    activeStudents: 3,
-    qrCode: "QR-CREATIVE-DIGITAL-2026",
-  },
-  {
-    id: "dudi-3",
-    name: "PT Telkom Indonesia",
-    address: "Jl. M.H. Thamrin No. 8, Jakarta Pusat",
-    industrySupervisor: "Bpk. Dian Sastro",
-    quota: 15,
-    activeStudents: 8,
-    qrCode: "QR-TELKOM-ID-2026",
-  },
-];
-
-const initialAttendanceRecords: AttendanceRecord[] = [
-  {
-    id: "att-1",
-    studentId: "std-6",
-    studentName: "Dita Ariyanti",
-    dudiName: "PT Lumin Studio",
-    date: "3 Agu 2026",
-    timeIn: "08:02",
-    timeOut: "16:05",
-    timestamp: "2026-08-03 08:02:00",
-    type: "Masuk",
-    status: "Hadir",
-    locationNote: "Scan QR di Lobby Studio",
-  },
-  {
-    id: "att-2",
-    studentId: "std-8",
-    studentName: "Galih Pramudito",
-    dudiName: "PT Sinar Data Nusantara",
-    date: "3 Agu 2026",
-    timeIn: "08:04",
-    timeOut: "—",
-    timestamp: "2026-08-03 08:04:00",
-    type: "Masuk",
-    status: "Hadir",
-    locationNote: "Scan QR di Resepsionis",
-  },
-  {
-    id: "att-3",
-    studentId: "std-7",
-    studentName: "Fitri Handayani",
-    dudiName: "Studio Piksel",
-    date: "3 Agu 2026",
-    timeIn: "07:58",
-    timeOut: "16:00",
-    timestamp: "2026-08-03 07:58:00",
-    type: "Masuk",
-    status: "Hadir",
-    locationNote: "Scan QR di Studio Utama",
-  },
-  {
-    id: "att-4",
-    studentId: "std-9",
-    studentName: "Eko Wibowo",
-    dudiName: "PT Jala Net",
-    date: "2 Agu 2026",
-    timeIn: "08:15",
-    timeOut: "—",
-    timestamp: "2026-08-02 08:15:00",
-    type: "Masuk",
-    status: "Hadir",
-    locationNote: "Scan QR di Pos Jala Net",
-  },
-];
-
-const initialJournals: JournalEntry[] = [
-  {
-    id: "jrn-1",
-    studentId: "std-1",
-    studentName: "Dita Ariyanti",
-    dudiName: "PT Lumin Studio",
-    date: "3 Agustus 2026",
-    workHours: 8,
-    title: "Menyusun UI komponen dashboard klien",
-    description: "Membuat komponen kartu statistik dan tabel aktivitas menggunakan React.",
-    status: "Menunggu verifikasi",
-  },
-  {
-    id: "jrn-2",
-    studentId: "std-2",
-    studentName: "Galih Pramudito",
-    dudiName: "Creative Space",
-    date: "13 Agustus 2026",
-    workHours: 7,
-    title: "Dokumentasi foto aktivitas",
-    description: "Menambahkan dua foto bukti kegiatan produksi konten.",
-    status: "Menunggu verifikasi",
-  },
-  {
-    id: "jrn-3",
-    studentId: "std-3",
-    studentName: "Fitri Handayani",
-    dudiName: "PT Telkom Indonesia",
-    date: "7 Agustus 2026",
-    workHours: 8,
-    title: "Konfigurasi jaringan kantor",
-    description: "Membantu setup switch dan pengalamatan IP di lantai 3.",
-    status: "Terverifikasi",
-  },
-  {
-    id: "jrn-4",
-    studentId: "std-4",
-    studentName: "Eko Wibowo",
-    dudiName: "PT Jala Net",
-    date: "30 Agustus 2026",
-    workHours: 8,
-    title: "Perawatan perangkat",
-    description: "Membersihkan dan memeriksa perangkat jaringan.",
-    status: "Terverifikasi",
-  },
-];
-
-const initialEvaluations: Evaluation[] = [
-  {
-    id: "eval-1",
-    studentId: "std-4",
-    studentName: "Dewi Anggraini",
-    dudiName: "Studio Anima Media",
-    technicalScore: 92,
-    softSkillScore: 88,
-    disciplineScore: 95,
-    ethicsScore: 90,
-    finalScore: 91.25,
-    grade: "A",
-    status: "Terverifikasi",
-    certificateNumber: "PKL-SMKN3-2026-8942",
-    issuedAt: "2026-08-01",
-  },
-];
-
-const initialNotifications: NotificationItem[] = [
-  {
-    id: "notif-1",
-    title: "Jurnal menunggu verifikasi",
-    message: "Ada jurnal baru dari Dita Ariyanti yang perlu diverifikasi.",
-    timestamp: "3 Agu 2026, 09.25",
-    isRead: false,
-  },
-  {
-    id: "notif-2",
-    title: "Anomali absensi terdeteksi",
-    message: "Eko Wibowo belum absen pulang kemarin.",
-    timestamp: "3 Agu 2026, 09.25",
-    isRead: false,
-  },
-  {
-    id: "notif-3",
-    title: "Sertifikat siap diterbitkan",
-    message: "Jasmine Ayu telah menyelesaikan seluruh tahapan PKL...",
-    timestamp: "3 Agu 2026, 09.25",
-    isRead: false,
-  },
-];
-
-export const useInternTrackStore = create<InternTrackState>((set, get) => ({
+export const useInternTrackStore = create<InternTrackState>()(
+  persist(
+    (set, get) => ({
   // Initial State
   currentRoute: "dashboard",
   currentRole: "Admin",
   searchQuery: "",
   isSidebarOpen: true,
 
-  students: initialStudents,
-  dudiList: initialDudiList,
-  attendanceRecords: initialAttendanceRecords,
-  journals: initialJournals,
-  evaluations: initialEvaluations,
-  toasts: [],
-  notifications: initialNotifications,
-
-  setRoute: (route) => set({ currentRoute: route }),
-  setRole: (role) => {
-    set({ currentRole: role });
-    get().addToast({
-      type: "info",
-      title: "Peran Diubah",
-      message: `Sekarang melihat dashboard sebagai ${role}`,
-    });
+  userProfile: {
+    fullName: "Siswa Magang",
+    email: "siswa@smkn3.sch.id",
+    whatsapp: "",
+    institution: "SMKN 3 Bandung",
+    department: "Rekayasa Perangkat Lunak",
+    notificationEmail: true,
+    weeklySummary: false,
   },
+
+  students: [],
+  dudiList: [],
+  attendanceRecords: [],
+  journals: [],
+  evaluations: [],
+  toasts: [],
+  notifications: [],
+
+  initData: (data) => set((state) => ({ ...state, ...data })),
+  setRoute: (route) => set({ currentRoute: route }),
+  setRole: (role) => set({ currentRole: role }),
   setSearchQuery: (query) => set({ searchQuery: query }),
   toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
+  closeSidebar: () => set({ isSidebarOpen: false }),
+  updateUserProfile: (profile) =>
+    set((state) => ({
+      userProfile: { ...state.userProfile, ...profile },
+    })),
 
   // CRUD Actions
-  addStudent: (newStd) => {
-    const id = `std-${Date.now()}`;
-    const student: Student = { ...newStd, id };
-    set((state) => ({ students: [student, ...state.students] }));
-    get().addToast({
-      type: "success",
-      title: "Siswa Ditambahkan",
-      message: `${newStd.name} berhasil didaftarkan ke sistem PKL.`,
+  addStudent: async (newStd) => {
+    const res = await addStudentDB({
+      nisn: newStd.nisn,
+      name: newStd.name,
+      class: newStd.class,
+      department: newStd.department,
     });
+    
+    if (res.success && res.data) {
+      const student: Student = { ...newStd, id: res.data.id };
+      set((state) => ({ students: [student, ...state.students] }));
+      get().addToast({
+        type: "success",
+        title: "Siswa Ditambahkan",
+        message: `${newStd.name} berhasil didaftarkan ke sistem PKL.`,
+      });
+    } else {
+      get().addToast({
+        type: "error",
+        title: "Gagal Menambahkan Siswa",
+        message: res.error || "Terjadi kesalahan pada server.",
+      });
+    }
   },
 
-  updateStudent: (id, updated) => {
+  updateStudent: async (id, updated) => {
+    // Optimistic UI update
+    const previousStudents = get().students;
     set((state) => ({
       students: state.students.map((s) => (s.id === id ? { ...s, ...updated } : s)),
     }));
-    get().addToast({
-      type: "success",
-      title: "Data Diperbarui",
-      message: "Informasi siswa telah berhasil disimpan.",
-    });
+
+    const res = await updateStudentDB(id, updated);
+    if (res.success) {
+      get().addToast({
+        type: "success",
+        title: "Data Diperbarui",
+        message: "Informasi siswa telah berhasil disimpan ke database.",
+      });
+    } else {
+      // Revert if failed
+      set({ students: previousStudents });
+      get().addToast({
+        type: "error",
+        title: "Gagal Memperbarui",
+        message: res.error || "Gagal menyimpan data ke database.",
+      });
+    }
   },
 
-  deleteStudent: (id) => {
+  deleteStudent: async (id) => {
     const target = get().students.find((s) => s.id === id);
+    if (!target) return;
+    
+    // Optimistic UI delete
     set((state) => ({
       students: state.students.filter((s) => s.id !== id),
     }));
-    get().addToast({
-      type: "warning",
-      title: "Siswa Dihapus",
-      message: `Data ${target?.name || "Siswa"} telah dihapus dari sistem.`,
-    });
+
+    const res = await deleteStudentDB(id);
+    
+    if (res.success) {
+      get().addToast({
+        type: "warning",
+        title: "Siswa Dihapus",
+        message: `Data ${target.name} telah dihapus dari sistem.`,
+      });
+    } else {
+      // Revert if failed
+      set((state) => ({ students: [target, ...state.students] }));
+      get().addToast({
+        type: "error",
+        title: "Gagal Menghapus",
+        message: "Siswa tidak dapat dihapus dari database.",
+      });
+    }
   },
 
-  moveKanbanStage: (studentId, targetStage) => {
+  moveKanbanStage: async (studentId, targetStage) => {
+    const previousStudents = get().students;
+    // Optimistic UI update
     set((state) => ({
       students: state.students.map((s) =>
         s.id === studentId ? { ...s, stage: targetStage } : s
       ),
     }));
-    get().addToast({
-      type: "info",
-      title: "Tahapan Diperbarui",
-      message: `Siswa telah dipindahkan ke tahap ${targetStage}`,
-    });
+
+    const res = await updateStudentStageDB(studentId, targetStage);
+    if (res.success) {
+      get().addToast({
+        type: "info",
+        title: "Tahapan Diperbarui",
+        message: `Siswa telah dipindahkan ke tahap ${targetStage}`,
+      });
+    } else {
+      // Revert
+      set({ students: previousStudents });
+      get().addToast({
+        type: "error",
+        title: "Gagal Memperbarui Tahapan",
+        message: "Perubahan dikembalikan karena gagal menyimpan ke database.",
+      });
+    }
   },
 
-  addDudi: (newDudi) => {
-    const id = `dudi-${Date.now()}`;
-    const dudi: Dudi = {
-      ...newDudi,
-      id,
-      qrCode: `QR-${newDudi.name.replace(/\s+/g, "-").toUpperCase()}-2026`,
-    };
-    set((state) => ({ dudiList: [...state.dudiList, dudi] }));
-    get().addToast({
-      type: "success",
-      title: "DUDI Ditambahkan",
-      message: `${newDudi.name} berhasil ditambahkan sebagai mitra PKL.`,
+  addDudi: async (newDudi) => {
+    const res = await addDudiDB({
+      name: newDudi.name,
+      address: newDudi.address,
+      industrySupervisor: newDudi.industrySupervisor,
+      quota: newDudi.quota,
     });
+    
+    if (res.success && res.data) {
+      const dudi: Dudi = {
+        ...newDudi,
+        id: res.data.id,
+        qrCode: `QR-${newDudi.name.replace(/\s+/g, "-").toUpperCase()}-2026`,
+      };
+      set((state) => ({ dudiList: [...state.dudiList, dudi] }));
+      get().addToast({
+        type: "success",
+        title: "DUDI Ditambahkan",
+        message: `${newDudi.name} berhasil ditambahkan sebagai mitra PKL.`,
+      });
+    } else {
+      get().addToast({
+        type: "error",
+        title: "Gagal Menambahkan DUDI",
+        message: res.error || "Terjadi kesalahan pada server.",
+      });
+    }
   },
 
-  updateDudi: (id, updated) => {
+  updateDudi: async (id, updated) => {
+    const previousDudis = get().dudiList;
     set((state) => ({
       dudiList: state.dudiList.map((d) => (d.id === id ? { ...d, ...updated } : d)),
     }));
-    get().addToast({
-      type: "success",
-      title: "Mitra DUDI Diperbarui",
-      message: "Informasi perusahaan telah diperbarui.",
-    });
+
+    const res = await updateDudiDB(id, updated);
+    if (res.success) {
+      get().addToast({
+        type: "success",
+        title: "Mitra DUDI Diperbarui",
+        message: "Informasi perusahaan telah diperbarui di database.",
+      });
+    } else {
+      set({ dudiList: previousDudis });
+      get().addToast({
+        type: "error",
+        title: "Gagal Memperbarui DUDI",
+        message: "Perubahan dibatalkan karena gagal menyimpan ke server.",
+      });
+    }
   },
 
-  deleteDudi: (id) => {
+  deleteDudi: async (id) => {
+    const target = get().dudiList.find((d) => d.id === id);
+    if (!target) return;
+    
     set((state) => ({
       dudiList: state.dudiList.filter((d) => d.id !== id),
     }));
-    get().addToast({
-      type: "warning",
-      title: "DUDI Dihapus",
-      message: "Perusahaan mitra telah dihapus dari database.",
-    });
+
+    const res = await deleteDudiDB(id);
+
+    if (res.success) {
+      get().addToast({
+        type: "warning",
+        title: "DUDI Dihapus",
+        message: "Perusahaan mitra telah dihapus dari database.",
+      });
+    } else {
+      set((state) => ({ dudiList: [...state.dudiList, target] }));
+      get().addToast({
+        type: "error",
+        title: "Gagal Menghapus DUDI",
+        message: "Terjadi kesalahan pada server.",
+      });
+    }
   },
 
   logAttendance: (record) => {
@@ -653,94 +416,210 @@ export const useInternTrackStore = create<InternTrackState>((set, get) => ({
     });
   },
 
-  correctAttendance: (id, status, note) => {
+  correctAttendance: async (id, status, note) => {
+    const previous = get().attendanceRecords;
     set((state) => ({
       attendanceRecords: state.attendanceRecords.map((att) =>
         att.id === id ? { ...att, status, correctionNote: note } : att
       ),
     }));
-    get().addToast({
-      type: "info",
-      title: "Koreksi Absensi",
-      message: `Status presensi berhasil dikoreksi menjadi ${status}.`,
+
+    const res = await updateAttendanceDB(id, {
+      status,
+      correctionNote: note,
     });
+
+    if (res.success) {
+      get().addToast({
+        type: "info",
+        title: "Koreksi Absensi",
+        message: `Status presensi berhasil dikoreksi menjadi ${status}.`,
+      });
+    } else {
+      set({ attendanceRecords: previous });
+      get().addToast({
+        type: "error",
+        title: "Gagal Mengoreksi Absensi",
+        message: res.error || "Gagal menyimpan koreksi absensi ke database.",
+      });
+    }
   },
 
-  addAttendanceRecord: (record) => {
-    const id = `att-${Date.now()}`;
-    const newRecord: AttendanceRecord = { ...record, id };
-    set((state) => ({ attendanceRecords: [newRecord, ...state.attendanceRecords] }));
-    get().addToast({
-      type: "success",
-      title: "Absensi Dicatat",
-      message: `Data presensi untuk ${record.studentName} telah berhasil disimpan.`,
+  addAttendanceRecord: async (record) => {
+    // Attempt DB first
+    const res = await addAttendanceDB({
+      studentId: record.studentId || "",
+      date: record.date || new Date().toISOString(),
+      timeIn: record.timeIn,
+      timeOut: record.timeOut,
+      status: record.status,
+      correctionNote: record.correctionNote,
     });
+
+    if (res.success && res.data) {
+      const newRecord: AttendanceRecord = { ...record, id: res.data.id };
+      set((state) => ({ attendanceRecords: [newRecord, ...state.attendanceRecords] }));
+      get().addToast({
+        type: "success",
+        title: "Absensi Dicatat",
+        message: `Data presensi untuk ${record.studentName} telah berhasil disimpan ke database.`,
+      });
+    } else {
+      get().addToast({
+        type: "error",
+        title: "Gagal Mencatat Absensi",
+        message: res.error || "Terjadi kesalahan pada server.",
+      });
+    }
   },
 
-  updateAttendanceRecord: (id, updated) => {
+  updateAttendanceRecord: async (id, updated) => {
+    const previous = get().attendanceRecords;
     set((state) => ({
       attendanceRecords: state.attendanceRecords.map((att) =>
         att.id === id ? { ...att, ...updated } : att
       ),
     }));
-    get().addToast({
-      type: "success",
-      title: "Absensi Diperbarui",
-      message: "Catatan presensi siswa berhasil diperbarui.",
+
+    const res = await updateAttendanceDB(id, {
+      date: updated.date,
+      timeIn: updated.timeIn,
+      timeOut: updated.timeOut,
+      status: updated.status,
+      correctionNote: updated.correctionNote,
     });
+
+    if (res.success) {
+      get().addToast({
+        type: "success",
+        title: "Absensi Diperbarui",
+        message: "Catatan presensi siswa berhasil diperbarui di database.",
+      });
+    } else {
+      set({ attendanceRecords: previous });
+      get().addToast({
+        type: "error",
+        title: "Gagal Memperbarui Absensi",
+        message: res.error || "Gagal menyimpan perubahan ke database.",
+      });
+    }
   },
 
-  deleteAttendanceRecord: (id) => {
+  deleteAttendanceRecord: async (id) => {
     const target = get().attendanceRecords.find((a) => a.id === id);
+    if (!target) return;
+
     set((state) => ({
       attendanceRecords: state.attendanceRecords.filter((att) => att.id !== id),
     }));
-    get().addToast({
-      type: "warning",
-      title: "Absensi Dihapus",
-      message: `Presensi ${target?.studentName || ""} berhasil dihapus dari data.`,
-    });
+
+    const res = await deleteAttendanceDB(id);
+
+    if (res.success) {
+      get().addToast({
+        type: "warning",
+        title: "Absensi Dihapus",
+        message: `Presensi ${target.studentName} berhasil dihapus dari database.`,
+      });
+    } else {
+      set((state) => ({ attendanceRecords: [target, ...state.attendanceRecords] }));
+      get().addToast({
+        type: "error",
+        title: "Gagal Menghapus Absensi",
+        message: res.error || "Terjadi kesalahan pada server.",
+      });
+    }
   },
 
-  addJournalEntry: (entry) => {
-    const id = `jrn-${Date.now()}`;
-    const newJournal: JournalEntry = {
-      ...entry,
-      id,
-      status: "Menunggu verifikasi",
-    };
-    set((state) => ({ journals: [newJournal, ...state.journals] }));
-    get().addToast({
-      type: "success",
-      title: "Jurnal Terkirim",
-      message: "Entri jurnal harian telah dikirim untuk diverifikasi pembimbing.",
+  addJournalEntry: async (entry) => {
+    const res = await addJournalDB({
+      studentId: entry.studentId,
+      date: entry.date,
+      activity: entry.title,
+      description: entry.description,
+      image: entry.photoUrl,
     });
+
+    if (res.success && res.data) {
+      const newJournal: JournalEntry = {
+        ...entry,
+        id: res.data.id,
+        status: "Menunggu verifikasi",
+      };
+      set((state) => ({ journals: [newJournal, ...state.journals] }));
+      get().addToast({
+        type: "success",
+        title: "Jurnal Disimpan",
+        message: "Laporan kegiatan harian berhasil dikirim.",
+      });
+    } else {
+      get().addToast({
+        type: "error",
+        title: "Gagal Menyimpan Jurnal",
+        message: res.error || "Terjadi kesalahan pada server.",
+      });
+    }
   },
 
-  updateJournalEntry: (id, updated) => {
+  updateJournalEntry: async (id, updated) => {
+    const previous = get().journals;
     set((state) => ({
       journals: state.journals.map((j) => (j.id === id ? { ...j, ...updated } : j)),
     }));
-    get().addToast({
-      type: "success",
-      title: "Jurnal Diperbarui",
-      message: "Jurnal berhasil diperbarui.",
+
+    const res = await updateJournalDB(id, {
+      date: updated.date,
+      activity: updated.title,
+      description: updated.description,
+      status: updated.status,
+      image: updated.photoUrl,
+      feedback: updated.feedback,
     });
+
+    if (res.success) {
+      get().addToast({
+        type: "success",
+        title: "Jurnal Diperbarui",
+        message: "Data jurnal berhasil disimpan ke database.",
+      });
+    } else {
+      set({ journals: previous });
+      get().addToast({
+        type: "error",
+        title: "Gagal Memperbarui Jurnal",
+        message: res.error || "Gagal menyimpan perubahan jurnal ke database.",
+      });
+    }
   },
 
-  deleteJournalEntry: (id) => {
+  deleteJournalEntry: async (id) => {
     const target = get().journals.find((j) => j.id === id);
+    if (!target) return;
+
     set((state) => ({
       journals: state.journals.filter((j) => j.id !== id),
     }));
-    get().addToast({
-      type: "warning",
-      title: "Jurnal Dihapus",
-      message: `Jurnal "${target?.title || ""}" berhasil dihapus.`,
-    });
+
+    const res = await deleteJournalDB(id);
+
+    if (res.success) {
+      get().addToast({
+        type: "warning",
+        title: "Jurnal Dihapus",
+        message: "Catatan aktivitas telah dihapus secara permanen.",
+      });
+    } else {
+      set((state) => ({ journals: [target, ...state.journals] }));
+      get().addToast({
+        type: "error",
+        title: "Gagal Menghapus Jurnal",
+        message: res.error || "Terjadi kesalahan pada server.",
+      });
+    }
   },
 
-  reviewJournal: (id, status, feedback, reviewerName) => {
+  reviewJournal: async (id, status, feedback, reviewerName) => {
+    const previous = get().journals;
     const now = new Date().toISOString().replace("T", " ").substring(0, 16);
     set((state) => ({
       journals: state.journals.map((j) =>
@@ -755,54 +634,78 @@ export const useInternTrackStore = create<InternTrackState>((set, get) => ({
           : j
       ),
     }));
-    get().addToast({
-      type: status === "Terverifikasi" ? "success" : "warning",
-      title: `Jurnal ${status}`,
-      message: `Status jurnal telah diperbarui menjadi ${status}.`,
-    });
+
+    const res = await updateJournalStatusDB(id, status, feedback);
+
+    if (res.success) {
+      get().addToast({
+        type: status === "Terverifikasi" ? "success" : "warning",
+        title: `Jurnal ${status}`,
+        message: `Status jurnal telah berhasil disimpan ke database sebagai ${status}.`,
+      });
+    } else {
+      set({ journals: previous });
+      get().addToast({
+        type: "error",
+        title: "Gagal Memperbarui Status Jurnal",
+        message: res.error || "Gagal menyimpan status jurnal ke database.",
+      });
+    }
   },
 
-  submitEvaluation: (evalData) => {
+  submitEvaluation: async (evaluation) => {
     const finalScore =
-      (evalData.technicalScore +
-        evalData.softSkillScore +
-        evalData.disciplineScore +
-        evalData.ethicsScore) /
-      4;
+      evaluation.technicalScore * 0.4 +
+      evaluation.softSkillScore * 0.3 +
+      evaluation.disciplineScore * 0.15 +
+      evaluation.ethicsScore * 0.15;
 
-    let grade: "A" | "B" | "C" | "D" = "C";
+    let grade: "A" | "B" | "C" | "D" = "A";
     if (finalScore >= 90) grade = "A";
     else if (finalScore >= 80) grade = "B";
     else if (finalScore >= 70) grade = "C";
     else grade = "D";
 
-    const id = `eval-${Date.now()}`;
-    const newEval: Evaluation = {
-      ...evalData,
-      id,
-      finalScore: Number(finalScore.toFixed(2)),
-      grade,
-      status: "Terverifikasi",
-    };
-
-    set((state) => ({
-      evaluations: [newEval, ...state.evaluations],
-    }));
-
-    get().addToast({
-      type: "success",
-      title: "Penilaian Berhasil",
-      message: `Penilaian untuk ${evalData.studentName} tersimpan dengan nilai akhir ${finalScore.toFixed(1)} (${grade}).`,
+    const res = await addEvaluationDB({
+      studentId: evaluation.studentId,
+      technicalScore: evaluation.technicalScore,
+      nonTechnicalScore: evaluation.softSkillScore, // mapping
+      finalScore: finalScore,
+      notes: "",
     });
+
+    if (res.success && res.data) {
+      const newEvaluation: Evaluation = {
+        ...evaluation,
+        id: res.data.id,
+        finalScore,
+        grade,
+        status: "Draft",
+      };
+
+      set((state) => ({ evaluations: [newEvaluation, ...state.evaluations] }));
+      get().addToast({
+        type: "success",
+        title: "Penilaian Tersimpan",
+        message: "Data penilaian siswa berhasil disimpan sebagai Draft.",
+      });
+    } else {
+      get().addToast({
+        type: "error",
+        title: "Gagal Menyimpan Penilaian",
+        message: res.error || "Terjadi kesalahan pada server.",
+      });
+    }
   },
 
-  generateCertificate: (studentId) => {
+  generateCertificate: async (studentId) => {
     const student = get().students.find((s) => s.id === studentId);
     if (!student) return "";
 
     const certNo = `PKL-SMKN3-2026-${Math.floor(1000 + Math.random() * 9000)}`;
     const now = new Date().toISOString().split("T")[0];
-    const existingEval = get().evaluations.find((e) => e.studentId === studentId);
+    const previousEvaluations = get().evaluations;
+    const existingEval = previousEvaluations.find((e) => e.studentId === studentId);
 
     if (existingEval) {
       set((state) => ({
@@ -832,11 +735,22 @@ export const useInternTrackStore = create<InternTrackState>((set, get) => ({
       set((state) => ({ evaluations: [newEval, ...state.evaluations] }));
     }
 
-    get().addToast({
-      type: "success",
-      title: "Sertifikat Diterbitkan",
-      message: `Sertifikat untuk ${student.name} berhasil diterbitkan dengan nomor ${certNo}.`,
-    });
+    const res = await issueCertificateDB(studentId, certNo);
+
+    if (res.success) {
+      get().addToast({
+        type: "success",
+        title: "Sertifikat Diterbitkan",
+        message: `Sertifikat untuk ${student.name} berhasil diterbitkan dengan nomor ${certNo}.`,
+      });
+    } else {
+      set({ evaluations: previousEvaluations });
+      get().addToast({
+        type: "error",
+        title: "Gagal Menerbitkan Sertifikat",
+        message: res.error || "Gagal menyimpan penerbitan sertifikat ke database.",
+      });
+    }
     return certNo;
   },
 
@@ -860,9 +774,15 @@ export const useInternTrackStore = create<InternTrackState>((set, get) => ({
     }));
   },
   
-  deleteNotification: (id) => {
+  deleteNotification: (id: string) => {
     set((state) => ({
       notifications: state.notifications.filter((n) => n.id !== id),
     }));
   },
-}));
+}),
+{
+  name: "interntrack-storage",
+  partialize: (state) => ({ userProfile: state.userProfile }),
+}
+  )
+);
