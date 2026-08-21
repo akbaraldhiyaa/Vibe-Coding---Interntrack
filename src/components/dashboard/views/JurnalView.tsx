@@ -182,8 +182,8 @@ export default function JurnalView() {
         <div className="border-t border-[var(--table-border)]" />
 
         {/* ── TABLE ────────────────────────────────────────────────── */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-[13px]">
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="w-full text-left text-[13px] min-w-[760px]">
             <thead>
               <tr className="border-b border-[var(--table-border)] text-[var(--card-subtitle)]">
                 <th className="py-3.5 px-4 font-semibold text-xs whitespace-nowrap">Siswa</th>
@@ -199,17 +199,17 @@ export default function JurnalView() {
                 <tr key={rec.id} className="hover:bg-[var(--table-hover-bg)] transition-colors group">
                   <td className="py-4 px-4 font-medium text-[var(--table-text)] whitespace-nowrap">{rec.studentName}</td>
                   <td className="py-4 px-4 text-[var(--foreground)] whitespace-nowrap">{rec.date}</td>
-                  <td className="py-4 px-4 text-[var(--foreground)]">{rec.title}</td>
-                  <td className="py-4 px-4 text-[var(--foreground)] leading-relaxed">
+                  <td className="py-4 px-4 text-[var(--foreground)] min-w-[150px]">{rec.title}</td>
+                  <td className="py-4 px-4 text-[var(--foreground)] leading-relaxed min-w-[250px]">
                     {rec.description}
                   </td>
                   <td className="py-4 px-4 text-[var(--foreground)] whitespace-nowrap">{rec.status}</td>
-                  <td className="py-4 px-4 text-right">
-                    <div className="flex items-center justify-end gap-3">
+                  <td className="py-4 px-4 text-right whitespace-nowrap">
+                    <div className="flex items-center justify-end gap-1.5">
                       <button
                         onClick={() => handleOpenEditModal(rec)}
                         type="button"
-                        className="text-[var(--card-subtitle)] hover:text-[var(--foreground)] transition cursor-pointer"
+                        className="p-2 rounded-lg hover:bg-[var(--surface-alt)] text-[var(--card-subtitle)] hover:text-[var(--foreground)] transition cursor-pointer min-w-[36px] min-h-[36px] flex items-center justify-center"
                         title="Edit Jurnal"
                       >
                         <Pencil className="w-4 h-4" />
@@ -217,7 +217,7 @@ export default function JurnalView() {
                       <button
                         onClick={() => setDeleteTarget(rec)}
                         type="button"
-                        className="text-red-500 hover:text-red-600 transition cursor-pointer"
+                        className="p-2 rounded-lg text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition cursor-pointer min-w-[36px] min-h-[36px] flex items-center justify-center"
                         title="Hapus Jurnal"
                       >
                         <Trash2 className="w-4 h-4" />

@@ -285,7 +285,7 @@ export default function PenilaianView() {
                       onClick={() => handleDownloadCertificate(student)}
                       disabled={isDownloading === student.id}
                       type="button"
-                      className="h-8 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[12px] font-semibold flex items-center gap-1.5 shadow-sm active:scale-[0.98] transition cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
+                      className="h-9 px-3.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[12px] font-semibold flex items-center gap-1.5 shadow-sm active:scale-[0.98] transition cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed min-h-[36px]"
                     >
                       {isDownloading === student.id ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -298,7 +298,7 @@ export default function PenilaianView() {
                     <button
                       onClick={() => setPublishTarget(student)}
                       type="button"
-                      className="h-8 px-3 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-[12px] font-semibold flex items-center gap-1.5 shadow-sm active:scale-[0.98] transition cursor-pointer"
+                      className="h-9 px-3.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-[12px] font-semibold flex items-center gap-1.5 shadow-sm active:scale-[0.98] transition cursor-pointer min-h-[36px]"
                     >
                       <Award className="w-3.5 h-3.5" />
                       <span>Terbitkan</span>
@@ -317,8 +317,8 @@ export default function PenilaianView() {
         </div>
 
         {/* ── DESKTOP TABLE ────────────────────────────────────────── */}
-        <div className="hidden md:block overflow-x-auto">
-          <table className="w-full text-left text-[13px]">
+        <div className="hidden md:block overflow-x-auto custom-scrollbar">
+          <table className="w-full text-left text-[13px] min-w-[700px]">
             <thead>
               <tr className="border-b border-[var(--table-border)] text-[var(--card-subtitle)]">
                 <th className="py-3.5 px-4 font-semibold text-xs whitespace-nowrap">Siswa</th>
@@ -357,7 +357,7 @@ export default function PenilaianView() {
                           onClick={() => handleDownloadCertificate(student)}
                           disabled={isDownloading === student.id}
                           type="button"
-                          className="h-8 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[12px] font-semibold flex items-center gap-1.5 ml-auto shadow-sm active:scale-[0.98] transition cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
+                          className="h-8 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[12px] font-semibold flex items-center gap-1.5 ml-auto shadow-sm active:scale-[0.98] transition cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed min-h-[36px]"
                         >
                           {isDownloading === student.id ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />

@@ -381,16 +381,16 @@ export default function AbsensiView() {
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   onClick={() => handleOpenEditModal(rec)}
-                  className="p-1.5 rounded-lg border border-[var(--input-border)] hover:bg-[var(--surface-alt)] text-[var(--card-subtitle)] hover:text-[var(--foreground)] transition cursor-pointer"
+                  className="p-2 rounded-lg border border-[var(--input-border)] hover:bg-[var(--surface-alt)] text-[var(--card-subtitle)] hover:text-[var(--foreground)] transition cursor-pointer min-w-[36px] min-h-[36px] flex items-center justify-center"
                 >
-                  <Pencil className="w-3.5 h-3.5" />
+                  <Pencil className="w-4 h-4" />
                 </button>
                 {isAdmin && (
                   <button
                     onClick={() => setDeleteTarget(rec)}
-                    className="p-1.5 rounded-lg border border-red-200 dark:border-red-950 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50 transition cursor-pointer"
+                    className="p-2 rounded-lg border border-red-200 dark:border-red-950 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50 transition cursor-pointer min-w-[36px] min-h-[36px] flex items-center justify-center"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 )}
               </div>
@@ -406,17 +406,17 @@ export default function AbsensiView() {
         </div>
 
         {/* ── DESKTOP TABLE ────────────────────────────────────────── */}
-        <div className="hidden md:block overflow-x-auto">
-          <table className="w-full text-left text-[13px]">
+        <div className="hidden md:block overflow-x-auto custom-scrollbar">
+          <table className="w-full text-left text-[13px] min-w-[760px]">
             <thead>
               <tr className="bg-[var(--table-header-bg)] border-b border-[var(--table-border)] text-[var(--card-subtitle)]">
-                <th className="py-3 px-5 font-semibold text-xs">Siswa</th>
-                <th className="py-3 px-5 font-semibold text-xs">Perusahaan DUDI</th>
-                <th className="py-3 px-5 font-semibold text-xs">Tanggal</th>
-                <th className="py-3 px-5 font-semibold text-xs text-center">Masuk</th>
-                <th className="py-3 px-5 font-semibold text-xs text-center">Pulang</th>
-                <th className="py-3 px-5 font-semibold text-xs text-center">Status</th>
-                <th className="py-3 px-5 font-semibold text-xs text-right">Aksi</th>
+                <th className="py-3 px-5 font-semibold text-xs whitespace-nowrap">Siswa</th>
+                <th className="py-3 px-5 font-semibold text-xs whitespace-nowrap">Perusahaan DUDI</th>
+                <th className="py-3 px-5 font-semibold text-xs whitespace-nowrap">Tanggal</th>
+                <th className="py-3 px-5 font-semibold text-xs text-center whitespace-nowrap">Masuk</th>
+                <th className="py-3 px-5 font-semibold text-xs text-center whitespace-nowrap">Pulang</th>
+                <th className="py-3 px-5 font-semibold text-xs text-center whitespace-nowrap">Status</th>
+                <th className="py-3 px-5 font-semibold text-xs text-right whitespace-nowrap">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--table-border)]">
@@ -426,30 +426,30 @@ export default function AbsensiView() {
               {/* Data rows */}
               {!isLoading && paginatedRecords.map((rec) => (
                 <tr key={rec.id} className="hover:bg-[var(--table-hover-bg)] transition-colors group">
-                  <td className="py-3.5 px-5 font-medium text-[var(--table-text)]">{rec.studentName}</td>
-                  <td className="py-3.5 px-5 text-[var(--card-subtitle)]">{rec.dudiName}</td>
-                  <td className="py-3.5 px-5 text-[var(--card-subtitle)]">{rec.date || "-"}</td>
-                  <td className="py-3.5 px-5 text-center font-mono text-[var(--card-subtitle)] text-xs">{rec.timeIn || "-"}</td>
-                  <td className="py-3.5 px-5 text-center font-mono text-[var(--card-subtitle)] text-xs">{rec.timeOut || "—"}</td>
-                  <td className="py-3.5 px-5 text-center"><StatusBadge status={rec.status} /></td>
-                  <td className="py-3.5 px-5 text-right">
+                  <td className="py-3.5 px-5 font-medium text-[var(--table-text)] whitespace-nowrap">{rec.studentName}</td>
+                  <td className="py-3.5 px-5 text-[var(--card-subtitle)] whitespace-nowrap">{rec.dudiName}</td>
+                  <td className="py-3.5 px-5 text-[var(--card-subtitle)] whitespace-nowrap">{rec.date || "-"}</td>
+                  <td className="py-3.5 px-5 text-center font-mono text-[var(--card-subtitle)] text-xs whitespace-nowrap">{rec.timeIn || "-"}</td>
+                  <td className="py-3.5 px-5 text-center font-mono text-[var(--card-subtitle)] text-xs whitespace-nowrap">{rec.timeOut || "—"}</td>
+                  <td className="py-3.5 px-5 text-center whitespace-nowrap"><StatusBadge status={rec.status} /></td>
+                  <td className="py-3.5 px-5 text-right whitespace-nowrap">
                     <div className="flex items-center justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
                       <button
                         onClick={() => handleOpenEditModal(rec)}
                         type="button"
-                        className="p-2 rounded-lg hover:bg-[var(--surface-alt)] text-[var(--card-subtitle)] hover:text-[var(--foreground)] transition cursor-pointer"
+                        className="p-2 rounded-lg hover:bg-[var(--surface-alt)] text-[var(--card-subtitle)] hover:text-[var(--foreground)] transition cursor-pointer min-w-[36px] min-h-[36px] flex items-center justify-center"
                         title="Edit Absensi"
                       >
-                        <Pencil className="w-3.5 h-3.5" />
+                        <Pencil className="w-4 h-4" />
                       </button>
                       {isAdmin && (
                         <button
                           onClick={() => setDeleteTarget(rec)}
                           type="button"
-                          className="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-[var(--card-subtitle)] hover:text-red-600 dark:hover:text-red-400 transition cursor-pointer"
+                          className="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-[var(--card-subtitle)] hover:text-red-600 dark:hover:text-red-400 transition cursor-pointer min-w-[36px] min-h-[36px] flex items-center justify-center"
                           title="Hapus Absensi"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       )}
                     </div>

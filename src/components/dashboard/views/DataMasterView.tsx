@@ -180,13 +180,13 @@ export default function DataMasterView() {
                     onClick={() => {
                       setEditStudentTarget(std);
                     }}
-                    className="p-2 rounded-lg text-blue-600 border border-[var(--input-border)] hover:bg-blue-50 dark:hover:bg-blue-950/40 cursor-pointer"
+                    className="p-2 rounded-lg text-blue-600 border border-[var(--input-border)] hover:bg-blue-50 dark:hover:bg-blue-950/40 cursor-pointer min-w-[36px] min-h-[36px] flex items-center justify-center"
                   >
                     <Edit2 className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => setDeleteStudentTarget(std)}
-                    className="p-2 rounded-lg text-red-600 border border-red-200 dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer"
+                    className="p-2 rounded-lg text-red-600 border border-red-200 dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer min-w-[36px] min-h-[36px] flex items-center justify-center"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -199,21 +199,21 @@ export default function DataMasterView() {
           </div>
 
           {/* ── DESKTOP TABLE (SISWA) ────────────────────────────────── */}
-          <div className="hidden md:block overflow-x-auto">
-            <table className="w-full text-left text-xs">
+          <div className="hidden md:block overflow-x-auto custom-scrollbar">
+            <table className="w-full text-left text-xs min-w-[720px]">
               <thead>
                 <tr className="border-b border-[var(--card-border)] bg-[var(--table-header-bg)] text-[var(--card-subtitle)] font-semibold">
-                  <th className="py-3 px-4">Nama & NISN</th>
-                  <th className="py-3 px-4">Kelas & Jurusan</th>
-                  <th className="py-3 px-4">Perusahaan DUDI</th>
-                  <th className="py-3 px-4">Pembimbing Sekolah</th>
-                  <th className="py-3 px-4 text-right">Aksi</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Nama & NISN</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Kelas & Jurusan</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Perusahaan DUDI</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Pembimbing Sekolah</th>
+                  <th className="py-3 px-4 text-right whitespace-nowrap">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--card-border)] text-[var(--foreground)]">
                 {filteredStudents.map((std) => (
                   <tr key={std.id} className="hover:bg-[var(--table-hover-bg)] transition-colors">
-                    <td className="py-3.5 px-4 font-bold flex items-center gap-3">
+                    <td className="py-3.5 px-4 font-bold flex items-center gap-3 whitespace-nowrap">
                       {std.avatar ? (
                         <img
                           src={std.avatar}
@@ -230,15 +230,15 @@ export default function DataMasterView() {
                         <p className="text-[10px] text-slate-600">{std.nisn}</p>
                       </div>
                     </td>
-                    <td className="py-3.5 px-4">
+                    <td className="py-3.5 px-4 whitespace-nowrap">
                       <p className="font-semibold">{std.class}</p>
                       <p className="text-[10px] text-slate-600">{std.department}</p>
                     </td>
-                    <td className="py-3.5 px-4 font-semibold text-blue-600 dark:text-blue-400">
+                    <td className="py-3.5 px-4 font-semibold text-blue-600 dark:text-blue-400 whitespace-nowrap">
                       {std.dudiName}
                     </td>
-                    <td className="py-3.5 px-4 font-medium text-slate-500">{std.schoolSupervisor}</td>
-                    <td className="py-3.5 px-4 text-right space-x-2">
+                    <td className="py-3.5 px-4 font-medium text-slate-500 whitespace-nowrap">{std.schoolSupervisor}</td>
+                    <td className="py-3.5 px-4 text-right whitespace-nowrap space-x-2">
                       <button
                         onClick={() => {
                           setEditStudentTarget(std);
@@ -299,13 +299,13 @@ export default function DataMasterView() {
                 <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--table-border)]">
                   <button
                     onClick={() => setQrDudiTarget(dudi)}
-                    className="p-2 rounded-lg text-emerald-600 border border-emerald-200 dark:border-emerald-900/30 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 cursor-pointer"
+                    className="p-2 rounded-lg text-emerald-600 border border-emerald-200 dark:border-emerald-900/30 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 cursor-pointer min-w-[36px] min-h-[36px] flex items-center justify-center"
                   >
                     <QrCode className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => deleteDudi(dudi.id)}
-                    className="p-2 rounded-lg text-red-600 border border-red-200 dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer"
+                    className="p-2 rounded-lg text-red-600 border border-red-200 dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer min-w-[36px] min-h-[36px] flex items-center justify-center"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -318,27 +318,27 @@ export default function DataMasterView() {
           </div>
 
           {/* ── DESKTOP TABLE (DUDI) ─────────────────────────────────── */}
-          <div className="hidden md:block overflow-x-auto">
-            <table className="w-full text-left text-xs">
+          <div className="hidden md:block overflow-x-auto custom-scrollbar">
+            <table className="w-full text-left text-xs min-w-[650px]">
               <thead>
                 <tr className="border-b border-[var(--card-border)] bg-[var(--table-header-bg)] text-[var(--card-subtitle)] font-semibold">
-                  <th className="py-3 px-4">Nama Perusahaan</th>
-                  <th className="py-3 px-4">Alamat DUDI</th>
-                  <th className="py-3 px-4">Pembimbing Industri</th>
-                  <th className="py-3 px-4">Kuota / Siswa Aktif</th>
-                  <th className="py-3 px-4 text-right">Aksi</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Nama Perusahaan</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Alamat DUDI</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Pembimbing Industri</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Kuota / Siswa Aktif</th>
+                  <th className="py-3 px-4 text-right whitespace-nowrap">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--card-border)] text-[var(--foreground)]">
                 {filteredDudi.map((dudi) => (
                   <tr key={dudi.id} className="hover:bg-[var(--table-hover-bg)] transition-colors">
-                    <td className="py-3.5 px-4 font-bold text-xs">{dudi.name}</td>
-                    <td className="py-3.5 px-4 font-medium text-slate-500">{dudi.address}</td>
-                    <td className="py-3.5 px-4 font-semibold">{dudi.industrySupervisor}</td>
-                    <td className="py-3.5 px-4 font-mono font-bold">
+                    <td className="py-3.5 px-4 font-bold text-xs whitespace-nowrap">{dudi.name}</td>
+                    <td className="py-3.5 px-4 font-medium text-slate-500 whitespace-nowrap">{dudi.address}</td>
+                    <td className="py-3.5 px-4 font-semibold whitespace-nowrap">{dudi.industrySupervisor}</td>
+                    <td className="py-3.5 px-4 font-mono font-bold whitespace-nowrap">
                       {dudi.activeStudents} / {dudi.quota} Siswa
                     </td>
-                    <td className="py-3.5 px-4 text-right space-x-2">
+                    <td className="py-3.5 px-4 text-right whitespace-nowrap space-x-2">
                       <button
                         onClick={() => setQrDudiTarget(dudi)}
                         className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 cursor-pointer"

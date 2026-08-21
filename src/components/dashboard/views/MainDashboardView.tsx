@@ -606,11 +606,11 @@ export default function MainDashboardView() {
         </div>
 
         {/* Lightweight Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="w-full text-left text-xs min-w-[780px]">
             <thead>
               <tr className="border-b border-[var(--card-border)] bg-[var(--surface-alt)] text-[var(--card-subtitle)] font-semibold">
-                <th className="py-3 px-4 w-10 text-center">
+                <th className="py-3 px-4 w-10 text-center whitespace-nowrap">
                   <button onClick={() => setSelectedStudents(filteredStudents.length > 0 && selectedStudents.length === filteredStudents.length ? [] : filteredStudents.map(s => s.id))} className="cursor-pointer">
                     {filteredStudents.length > 0 && selectedStudents.length === filteredStudents.length ? (
                       <CheckSquare className="w-4 h-4 text-blue-600 dark:text-blue-400" />
@@ -621,7 +621,7 @@ export default function MainDashboardView() {
                 </th>
                 <th
                   onClick={() => handleSort('name')}
-                  className="py-3 px-4 cursor-pointer select-none hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors"
+                  className="py-3 px-4 cursor-pointer select-none hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
                   aria-sort={sortConfig.key === 'name' ? (sortConfig.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
                 >
                   <span className="flex items-center gap-1">
@@ -629,11 +629,11 @@ export default function MainDashboardView() {
                     <SortIcon column="name" />
                   </span>
                 </th>
-                <th className="py-3 px-4">Kelas & Jurusan</th>
-                <th className="py-3 px-4">Perusahaan DUDI</th>
+                <th className="py-3 px-4 whitespace-nowrap">Kelas & Jurusan</th>
+                <th className="py-3 px-4 whitespace-nowrap">Perusahaan DUDI</th>
                 <th
                   onClick={() => handleSort('stage')}
-                  className="py-3 px-4 cursor-pointer select-none hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors"
+                  className="py-3 px-4 cursor-pointer select-none hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
                   aria-sort={sortConfig.key === 'stage' ? (sortConfig.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
                 >
                   <span className="flex items-center gap-1">
@@ -643,7 +643,7 @@ export default function MainDashboardView() {
                 </th>
                 <th
                   onClick={() => handleSort('attendance')}
-                  className="py-3 px-4 cursor-pointer select-none hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors"
+                  className="py-3 px-4 cursor-pointer select-none hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
                   aria-sort={sortConfig.key === 'attendance' ? (sortConfig.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
                 >
                   <span className="flex items-center gap-1">
@@ -651,7 +651,7 @@ export default function MainDashboardView() {
                     <SortIcon column="attendance" />
                   </span>
                 </th>
-                <th className="py-3 px-4">Status</th>
+                <th className="py-3 px-4 whitespace-nowrap">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--card-border)] text-[var(--foreground)]">
@@ -661,7 +661,7 @@ export default function MainDashboardView() {
                   onClick={() => setSelectedStudentModal(std)}
                   className={`transition-colors cursor-pointer ${selectedStudents.includes(std.id) ? "bg-blue-50/50 dark:bg-blue-900/10" : "hover:bg-[var(--table-hover-bg)]"}`}
                 >
-                  <td className="py-3.5 px-4 text-center" onClick={(e) => { e.stopPropagation(); setSelectedStudents(prev => prev.includes(std.id) ? prev.filter(id => id !== std.id) : [...prev, std.id]) }}>
+                  <td className="py-3.5 px-4 text-center whitespace-nowrap" onClick={(e) => { e.stopPropagation(); setSelectedStudents(prev => prev.includes(std.id) ? prev.filter(id => id !== std.id) : [...prev, std.id]) }}>
                     <button className="cursor-pointer">
                       {selectedStudents.includes(std.id) ? (
                         <CheckSquare className="w-4 h-4 text-blue-600 dark:text-blue-400" />
@@ -670,7 +670,7 @@ export default function MainDashboardView() {
                       )}
                     </button>
                   </td>
-                  <td className="py-3.5 px-4 font-bold flex items-center gap-3">
+                  <td className="py-3.5 px-4 font-bold flex items-center gap-3 whitespace-nowrap">
                     <div className="w-7 h-7 rounded-full bg-slate-900 dark:bg-slate-800 text-white font-bold text-[11px] flex items-center justify-center shrink-0">
                       {getInitials(std.name)}
                     </div>
@@ -679,17 +679,17 @@ export default function MainDashboardView() {
                       <p className="text-[10px] text-[var(--text-muted)]">{std.nisn}</p>
                     </div>
                   </td>
-                  <td className="py-3.5 px-4">
+                  <td className="py-3.5 px-4 whitespace-nowrap">
                     <p className="font-semibold">{std.class}</p>
                     <p className="text-[10px] text-[var(--text-muted)]">{std.department}</p>
                   </td>
-                  <td className="py-3.5 px-4 font-semibold text-[#1E3A8A] dark:text-blue-400">
+                  <td className="py-3.5 px-4 font-semibold text-[#1E3A8A] dark:text-blue-400 whitespace-nowrap">
                     {std.dudiName}
                   </td>
-                  <td className="py-3.5 px-4 font-medium text-[var(--text-secondary)]">
+                  <td className="py-3.5 px-4 font-medium text-[var(--text-secondary)] whitespace-nowrap">
                     {std.stage}
                   </td>
-                  <td className="py-3.5 px-4 font-bold">
+                  <td className="py-3.5 px-4 font-bold whitespace-nowrap">
                     <span
                       className={`px-2 py-0.5 rounded-full text-[10px] ${
                         std.attendanceRate >= 90
@@ -700,7 +700,7 @@ export default function MainDashboardView() {
                       {std.attendanceRate}%
                     </span>
                   </td>
-                  <td className="py-3.5 px-4">
+                  <td className="py-3.5 px-4 whitespace-nowrap">
                     <StatusBadge status={std.status} />
                   </td>
                 </tr>
@@ -768,27 +768,27 @@ export default function MainDashboardView() {
         </div>
 
         {/* Activity Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="w-full text-left text-xs min-w-[650px]">
             <thead>
               <tr className="border-b border-[var(--card-border)] bg-[var(--surface-alt)] text-[var(--card-subtitle)] font-semibold">
-                <th className="py-3 px-4">Tanggal</th>
-                <th className="py-3 px-4">Nama Siswa</th>
-                <th className="py-3 px-4">Tipe</th>
-                <th className="py-3 px-4">Deskripsi Aktivitas</th>
-                <th className="py-3 px-4">Status</th>
+                <th className="py-3 px-4 whitespace-nowrap">Tanggal</th>
+                <th className="py-3 px-4 whitespace-nowrap">Nama Siswa</th>
+                <th className="py-3 px-4 whitespace-nowrap">Tipe</th>
+                <th className="py-3 px-4 whitespace-nowrap">Deskripsi Aktivitas</th>
+                <th className="py-3 px-4 whitespace-nowrap">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--card-border)] text-[var(--foreground)]">
               {activityFeed.filter(a => activityTab === "Semua" || a.type === activityTab).map((act) => (
                 <tr key={act.id} className="hover:bg-[var(--table-hover-bg)] transition-colors">
                   <td className="py-3.5 px-4 font-mono text-[var(--text-muted)] whitespace-nowrap">{act.date}</td>
-                  <td className="py-3.5 px-4 font-bold">{act.studentName}</td>
-                  <td className="py-3.5 px-4 font-semibold text-[var(--text-muted)]">{act.type}</td>
-                  <td className="py-3.5 px-4 font-medium text-[var(--text-primary)]">
+                  <td className="py-3.5 px-4 font-bold whitespace-nowrap">{act.studentName}</td>
+                  <td className="py-3.5 px-4 font-semibold text-[var(--text-muted)] whitespace-nowrap">{act.type}</td>
+                  <td className="py-3.5 px-4 font-medium text-[var(--text-primary)] min-w-[200px]">
                     {act.description}
                   </td>
-                  <td className="py-3.5 px-4">
+                  <td className="py-3.5 px-4 whitespace-nowrap">
                     <span
                       className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                         act.status === "Terverifikasi" || act.status === "Hadir"
