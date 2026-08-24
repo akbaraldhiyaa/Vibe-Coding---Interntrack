@@ -57,7 +57,7 @@ function getInitials(name: string) {
 
 export default function HeroSection() {
   return (
-    <section id="beranda" className="relative pt-28 sm:pt-32 pb-16 sm:pb-24 overflow-hidden">
+    <section id="beranda" className="relative pt-24 sm:pt-32 pb-14 sm:pb-24 overflow-hidden scroll-mt-20">
       {/* Subtle gradient backdrop */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-gradient-to-b from-[var(--bg-brand-primary)] via-transparent to-transparent opacity-40 rounded-full blur-3xl" />

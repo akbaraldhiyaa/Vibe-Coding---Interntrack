@@ -84,21 +84,21 @@ export default function DashboardShell({ onLogout }: DashboardShellProps) {
 
   if (!isDataLoaded) {
     return (
-      <div className="min-h-screen bg-[var(--background)] flex flex-col items-center justify-center gap-3">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
-        <p className="text-xs text-[var(--card-subtitle)] font-medium">Memuat data...</p>
+      <div className="min-h-screen bg-[var(--background)] flex flex-col items-center justify-center gap-3" suppressHydrationWarning>
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500" suppressHydrationWarning></div>
+        <p className="text-xs text-[var(--card-subtitle)] font-medium" suppressHydrationWarning>Memuat data...</p>
       </div>
     );
   }
 
   if (loadError) {
     return (
-      <div className="min-h-screen bg-[var(--background)] flex flex-col items-center justify-center p-4">
-        <div className="w-full max-w-md p-6 rounded-2xl bg-[var(--card-bg)] border border-[var(--card-border)] shadow-lg text-center space-y-4">
-          <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-950/40 text-red-600 dark:text-red-400 flex items-center justify-center mx-auto">
+      <div className="min-h-screen bg-[var(--background)] flex flex-col items-center justify-center p-4" suppressHydrationWarning>
+        <div className="w-full max-w-md p-6 rounded-2xl bg-[var(--card-bg)] border border-[var(--card-border)] shadow-lg text-center space-y-4" suppressHydrationWarning>
+          <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-950/40 text-red-600 dark:text-red-400 flex items-center justify-center mx-auto" suppressHydrationWarning>
             <AlertTriangle className="w-6 h-6" />
           </div>
-          <div>
+          <div suppressHydrationWarning>
             <h3 className="text-base font-bold text-[var(--foreground)]">Data Gagal Dimuat</h3>
             <p className="text-xs text-[var(--card-subtitle)] mt-1">{loadError}</p>
           </div>
@@ -109,6 +109,7 @@ export default function DashboardShell({ onLogout }: DashboardShellProps) {
             }}
             type="button"
             className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center justify-center gap-2 mx-auto cursor-pointer transition shadow-sm"
+            suppressHydrationWarning
           >
             <RefreshCw className="w-3.5 h-3.5" />
             <span>Coba Lagi</span>

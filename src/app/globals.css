@@ -445,3 +445,15 @@ body {
     animation: none !important;
   }
 }
+
+/* ============================================
+   STICKY NAVBAR ANCHOR SCROLL OFFSET
+   ============================================ */
+
+html {
+  scroll-padding-top: 5rem;
+}
+
+section[id] {
+  scroll-margin-top: 5rem;
+}

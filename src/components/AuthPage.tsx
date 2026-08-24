@@ -164,8 +164,8 @@ export default function AuthPage() {
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen bg-[var(--background)] flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+      <div className="min-h-screen bg-[var(--background)] flex items-center justify-center" suppressHydrationWarning>
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500" suppressHydrationWarning></div>
       </div>
     );
   }
@@ -183,64 +183,71 @@ export default function AuthPage() {
 
   return (
     <div suppressHydrationWarning className="min-h-screen w-full flex flex-col lg:flex-row bg-[var(--background)] text-[var(--foreground)] transition-colors duration-300 relative">
-      <div suppressHydrationWarning className="absolute top-4 right-4 z-50">
-        <ThemeToggle showLabel />
+      {/* DESKTOP THEME TOGGLE — Anchored at far-right of the full viewport */}
+      <div suppressHydrationWarning className="hidden lg:block absolute top-6 right-6 xl:top-8 xl:right-8 z-50">
+        <ThemeToggle />
       </div>
 
       {/* LEFT PANEL - DARK HERO / BRAND SECTION */}
-      <div className="w-full lg:w-1/2 bg-[var(--hero-bg)] text-[var(--hero-text)] flex flex-col justify-between p-8 sm:p-12 lg:p-16 min-h-[480px] lg:min-h-screen relative overflow-hidden transition-colors duration-300">
+      <div className="w-full lg:w-1/2 bg-[var(--hero-bg)] text-[var(--hero-text)] flex flex-col justify-between p-6 sm:p-10 lg:p-16 min-h-[460px] sm:min-h-[520px] lg:min-h-screen relative overflow-hidden transition-colors duration-300">
         {/* Subtle Background Radial Glow */}
         <div className="absolute -top-32 -left-32 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
 
-        {/* Top Logo & Header */}
-        <div className="relative z-10 flex items-center gap-3.5">
-          <div className="w-10 h-10 rounded-full bg-slate-800/80 border border-slate-700/60 flex items-center justify-center shadow-inner shrink-0">
-            <GraduationCap className="w-5 h-5 text-slate-200" />
+        {/* Top Logo & Header with Integrated Mobile/Tablet ThemeToggle */}
+        <div className="relative z-10 flex items-center justify-between gap-3 w-full pb-6 sm:pb-8 lg:pb-0">
+          <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-slate-800/80 border border-slate-700/60 flex items-center justify-center shadow-inner shrink-0">
+              <GraduationCap className="w-4.5 h-4.5 sm:w-5 sm:h-5 text-slate-200" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-sm sm:text-base font-bold tracking-tight text-white leading-tight truncate">
+                InternTrack
+              </h2>
+              <p className="text-[11px] sm:text-xs text-slate-400 font-normal truncate">SMKN 3 Jakarta</p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-base font-bold tracking-tight text-white leading-tight">
-              InternTrack
-            </h2>
-            <p className="text-xs text-slate-400 font-normal">SMKN 3 Jakarta</p>
+          {/* Mobile & Tablet ThemeToggle (in-flow header item) */}
+          <div className="shrink-0 ml-auto lg:hidden">
+            <ThemeToggle />
           </div>
         </div>
 
         {/* Middle Main Content */}
-        <div className="relative z-10 max-w-xl my-auto py-12 lg:py-0">
-          <h1 className="text-3xl sm:text-4xl lg:text-[42px] font-bold text-white leading-[1.2] tracking-tight">
+        <div className="relative z-10 max-w-xl my-auto py-6 sm:py-8 lg:py-0">
+          <h1 className="text-2xl sm:text-4xl lg:text-[42px] font-bold text-white leading-[1.2] tracking-tight">
             Satu tempat untuk seluruh siklus PKL
           </h1>
-          <p className="text-slate-400 text-sm sm:text-base leading-relaxed mt-4 font-normal max-w-lg">
+          <p className="text-slate-400 text-xs sm:text-base leading-relaxed mt-3 sm:mt-4 font-normal max-w-lg">
             Penempatan, absensi QR, jurnal harian, penilaian, hingga sertifikat
             terpantau real-time oleh sekolah, pembimbing, dan industri.
           </p>
 
           {/* Bulleted list of features */}
-          <ul className="mt-8 space-y-3 text-sm sm:text-base text-slate-200">
-            <li className="flex items-start gap-3">
-              <span className="w-2 h-2 rounded-full bg-[#3B82F6] shrink-0 mt-2 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
+          <ul className="mt-6 sm:mt-8 space-y-2.5 sm:space-y-3 text-xs sm:text-base text-slate-200">
+            <li className="flex items-start gap-2.5 sm:gap-3">
+              <span className="w-2 h-2 rounded-full bg-[#3B82F6] shrink-0 mt-1.5 sm:mt-2 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
               <span>Kanban tahapan PKL yang selalu sinkron</span>
             </li>
-            <li className="flex items-start gap-3">
-              <span className="w-2 h-2 rounded-full bg-[#3B82F6] shrink-0 mt-2 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
+            <li className="flex items-start gap-2.5 sm:gap-3">
+              <span className="w-2 h-2 rounded-full bg-[#3B82F6] shrink-0 mt-1.5 sm:mt-2 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
               <span>Absensi berbasis QR dengan deteksi anomali</span>
             </li>
-            <li className="flex items-start gap-3">
-              <span className="w-2 h-2 rounded-full bg-[#3B82F6] shrink-0 mt-2 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
+            <li className="flex items-start gap-2.5 sm:gap-3">
+              <span className="w-2 h-2 rounded-full bg-[#3B82F6] shrink-0 mt-1.5 sm:mt-2 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
               <span>Jurnal harian terverifikasi pembimbing</span>
             </li>
           </ul>
         </div>
 
         {/* Bottom Footer */}
-        <div suppressHydrationWarning className="relative z-10 text-xs text-slate-400 font-normal pt-6 lg:pt-0">
+        <div suppressHydrationWarning className="relative z-10 text-[11px] sm:text-xs text-slate-400 font-normal pt-6 lg:pt-0">
           © 2026 InternTrack. Semua data terenkripsi.
         </div>
       </div>
 
       {/* RIGHT PANEL - AUTHENTICATION CARD / FORGOT PASSWORD CARD */}
-      <div className="w-full lg:w-1/2 flex flex-col items-center justify-center p-4 sm:p-8 lg:p-12 min-h-[100dvh] lg:min-h-screen py-12 lg:py-0">
+      <div className="w-full lg:w-1/2 flex flex-col items-center justify-center p-4 sm:p-8 lg:p-12 py-8 sm:py-12 lg:py-0 lg:min-h-screen">
         {authMode === "auth" ? (
           /* LOGIN / REGISTER CARD */
           <div className="w-full max-w-[440px] bg-[var(--card-bg)] border border-[var(--card-border)] rounded-2xl sm:rounded-3xl p-6 sm:p-9 shadow-[var(--card-shadow)] transition-all">

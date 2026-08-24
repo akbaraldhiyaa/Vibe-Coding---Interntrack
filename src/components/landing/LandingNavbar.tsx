@@ -55,11 +55,11 @@ export default function LandingNavbar() {
       <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Brand */}
-          <Link href="/" className="flex items-center gap-2.5 shrink-0">
+          <Link href="/" className="flex items-center gap-2 sm:gap-2.5 shrink-0">
             <div className="w-8 h-8 rounded-lg bg-[var(--btn-primary-bg)] flex items-center justify-center shadow-xs">
               <GraduationCap className="w-4.5 h-4.5 text-white" />
             </div>
-            <span className="text-base font-bold text-[var(--foreground)] tracking-tight">
+            <span className="text-sm sm:text-base font-bold text-[var(--foreground)] tracking-tight">
               InternTrack
             </span>
           </Link>
@@ -97,7 +97,7 @@ export default function LandingNavbar() {
           </div>
 
           {/* Mobile Right Controls (Theme + Hamburger) */}
-          <div className="flex md:hidden items-center gap-2">
+          <div className="flex md:hidden items-center gap-1.5 sm:gap-2 shrink-0">
             <ThemeToggle />
             <button
               type="button"
