@@ -372,3 +372,76 @@ body {
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: var(--input-placeholder);
 }
+
+/* ============================================
+   LANDING PAGE — ANIMATION UTILITIES
+   ============================================ */
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.landing-animate {
+  opacity: 0;
+}
+
+.landing-animate.is-visible {
+  animation: fadeUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.landing-animate-delay-1.is-visible { animation-delay: 0.1s; }
+.landing-animate-delay-2.is-visible { animation-delay: 0.2s; }
+.landing-animate-delay-3.is-visible { animation-delay: 0.3s; }
+.landing-animate-delay-4.is-visible { animation-delay: 0.4s; }
+.landing-animate-delay-5.is-visible { animation-delay: 0.5s; }
+.landing-animate-delay-6.is-visible { animation-delay: 0.6s; }
+
+.landing-scale-in {
+  opacity: 0;
+}
+
+.landing-scale-in.is-visible {
+  animation: scaleIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.3s forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-animate,
+  .landing-scale-in {
+    opacity: 1 !important;
+    animation: none !important;
+  }
+}

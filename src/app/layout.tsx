@@ -17,8 +17,8 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "InternTrack",
-  description: "Dashboard Monitoring PKL & Magang Siswa",
+  title: "InternTrack — Platform Manajemen PKL Terintegrasi",
+  description: "Platform manajemen Praktik Kerja Lapangan (PKL) untuk sekolah dan institusi pendidikan. Kelola siswa, absensi, jurnal, penilaian, dan sertifikat dalam satu sistem.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,

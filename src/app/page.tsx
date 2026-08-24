@@ -1,12 +1,11 @@
-import { redirect } from "next/navigation";
-import { getServerAuthSession } from "@/lib/auth";
+import LandingPage from "@/components/landing/LandingPage";
 
-export default async function Home() {
-  const session = await getServerAuthSession();
+export const metadata = {
+  title: "InternTrack — Platform Manajemen PKL Terintegrasi",
+  description:
+    "Platform manajemen Praktik Kerja Lapangan (PKL) untuk sekolah dan institusi pendidikan. Kelola siswa, absensi, jurnal, penilaian, dan sertifikat dalam satu sistem terintegrasi.",
+};
 
-  if (session?.user) {
-    redirect("/dashboard");
-  } else {
-    redirect("/login");
-  }
+export default function Home() {
+  return <LandingPage />;
 }
