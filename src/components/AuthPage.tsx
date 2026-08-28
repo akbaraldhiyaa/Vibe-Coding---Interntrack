@@ -325,8 +325,21 @@ export default function AuthPage() {
         }}
         onComplete={async () => {
           if (pendingGoogleUser) {
+             // Force-refresh the token here too — registerGoogleUser already ran with
+             // a fresh token from OnboardingPage, but the signIn call below also
+             // goes through verifyIdToken on the server, so it needs a fresh token.
+             let freshIdToken = pendingGoogleUser.idToken;
+             try {
+               const { auth: firebaseAuth } = await import("@/lib/firebase");
+               const currentUser = firebaseAuth.currentUser;
+               if (currentUser) {
+                 freshIdToken = await currentUser.getIdToken(true);
+               }
+             } catch (tokenErr) {
+               console.error("[AuthPage] Failed to refresh Firebase token for signIn:", tokenErr);
+             }
              const res = await signIn("credentials", {
-                idToken: pendingGoogleUser.idToken,
+                idToken: freshIdToken,
                 redirect: false
              });
              if (res?.error) {

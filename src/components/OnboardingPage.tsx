@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useSession } from "next-auth/react";
 import { completeOnboarding } from "@/app/actions/auth";
+import { auth as firebaseAuth } from "@/lib/firebase";
 import {
   GraduationCap,
   Check,
@@ -110,12 +111,27 @@ export default function OnboardingPage({ onComplete, onBackToAuth, pendingGoogle
 
       if (pendingGoogleUser) {
         // We need to register the Google user!
+        // CRITICAL: Force-refresh the Firebase ID token before calling the server action.
+        // The token in pendingGoogleUser.idToken was captured at popup time.
+        // After the user spends time on onboarding steps, that token may be expired
+        // or invalid due to clock skew on the production server, causing verifyIdToken to throw.
         const { registerGoogleUser } = await import("@/app/actions/auth");
-        
+
+        let freshIdToken = pendingGoogleUser.idToken;
+        try {
+          const currentUser = firebaseAuth.currentUser;
+          if (currentUser) {
+            freshIdToken = await currentUser.getIdToken(true);
+          }
+        } catch (tokenErr) {
+          console.error("[Onboarding] Failed to refresh Firebase token:", tokenErr);
+          // Fall back to the original token; server will surface the error if it's truly expired.
+        }
+
         const res = await registerGoogleUser({
           fullName: pendingGoogleUser.name,
           role: roleString,
-          idToken: pendingGoogleUser.idToken,
+          idToken: freshIdToken,
           institution,
           department,
           whatsapp,
