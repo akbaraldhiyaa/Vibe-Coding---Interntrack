@@ -13,17 +13,77 @@ export const authOptions: NextAuthOptions = {
     CredentialsProvider({
       name: "Credentials",
       credentials: {
-        email: { label: "Email", type: "email" },
+        login: { label: "Username atau Email", type: "text" },
         password: { label: "Password", type: "password" },
+        idToken: { label: "ID Token", type: "text" },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
+        if (credentials?.idToken) {
+          try {
+            const { adminAuth } = await import("@/lib/firebase-admin");
+
+            if (!adminAuth) {
+              console.error("[auth] Firebase Admin not initialized — check FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY env vars");
+              return null;
+            }
+
+            const decodedToken = await adminAuth.verifyIdToken(credentials.idToken);
+            const uid = decodedToken.uid;
+
+            console.log("[auth] Firebase token verified, UID exists:", !!uid, "Email:", !!decodedToken.email);
+
+            // Find linked account
+            const linkedAccount = await prisma.linkedAccount.findUnique({
+              where: {
+                provider_providerAccountId: {
+                  provider: "google",
+                  providerAccountId: uid,
+                },
+              },
+              include: { user: true },
+            });
+
+            if (!linkedAccount || !linkedAccount.user) {
+              if (decodedToken.email) {
+                const existingUser = await prisma.user.findUnique({
+                  where: { email: decodedToken.email },
+                });
+                if (existingUser) {
+                  console.log("[auth] Google email exists but not linked to Google.");
+                  throw new Error("EXISTING_EMAIL_NOT_LINKED");
+                }
+              }
+              console.log("[auth] No LinkedAccount found for Google UID — user needs to register");
+              return null;
+            }
+
+            console.log("[auth] LinkedAccount found, User ID:", linkedAccount.user.id);
+
+            return {
+              id: linkedAccount.user.id,
+              name: linkedAccount.user.fullName,
+              email: linkedAccount.user.email,
+              role: linkedAccount.user.role,
+              setupComplete: !!linkedAccount.user.institution,
+            };
+          } catch (error) {
+            console.error("Firebase token verification error:", error);
+            return null;
+          }
+        }
+
+        if (!credentials?.login || !credentials?.password) {
           return null;
         }
 
-        const email = credentials.email.trim().toLowerCase();
-        const user = await prisma.user.findUnique({
-          where: { email },
+        const loginInput = credentials.login.trim().toLowerCase();
+        const user = await prisma.user.findFirst({
+          where: {
+            OR: [
+              { email: loginInput },
+              { username: loginInput },
+            ],
+          },
         });
 
         if (!user || !user.password) {
@@ -54,6 +114,7 @@ export const authOptions: NextAuthOptions = {
           name: user.fullName,
           email: user.email,
           role: user.role,
+          setupComplete: !!user.institution,
         };
       },
     }),
@@ -62,7 +123,10 @@ export const authOptions: NextAuthOptions = {
     strategy: "jwt",
   },
   callbacks: {
-    async jwt({ token, user, account }) {
+    async jwt({ token, user, account, trigger, session }) {
+      if (trigger === "update" && session?.setupComplete !== undefined) {
+        token.setupComplete = session.setupComplete;
+      }
       if (account) {
         token.provider = account.provider;
         token.providerAccountId = account.providerAccountId;
@@ -70,6 +134,7 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id;
         token.role = (user as any).role || "Siswa";
+        token.setupComplete = (user as any).setupComplete;
       }
       return token;
     },
@@ -77,12 +142,13 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         (session.user as any).id = token.id || token.sub;
         (session.user as any).role = token.role || "Siswa";
+        (session.user as any).setupComplete = token.setupComplete;
       }
       return session;
     },
   },
   pages: {
-    signIn: "/",
+    signIn: "/login",
   },
   secret: process.env.NEXTAUTH_SECRET || "interntrack-secret-key-2026",
 };

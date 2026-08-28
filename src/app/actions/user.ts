@@ -13,40 +13,54 @@ export interface UserProfileData {
   notificationEmail: boolean;
   weeklySummary: boolean;
   role?: string;
+  username?: string | null;
+  hasPassword?: boolean;
+  linkedProviders?: string[];
+  avatar?: string | null;
 }
 
 export async function getUserProfile(email?: string) {
   try {
     const authRes = await getAuthContext();
-    let user = null;
+    let user: Awaited<ReturnType<typeof prisma.user.findUnique>> = null;
 
     if (authRes.success) {
       user = await prisma.user.findUnique({
         where: { id: authRes.auth.userId },
+        include: { linkedAccounts: true },
       });
     } else if (email && email.trim()) {
       user = await prisma.user.findUnique({
         where: { email: email.trim().toLowerCase() },
+        include: { linkedAccounts: true },
       });
     }
 
     if (!user) {
-      user = await prisma.user.findFirst();
+      user = await prisma.user.findFirst({ include: { linkedAccounts: true } });
     }
 
     if (!user) {
       return { success: false, error: "Pengguna tidak ditemukan." };
     }
 
+    const linkedProviders = ((user as any).linkedAccounts ?? []).map(
+      (la: { provider: string }) => la.provider
+    );
+
     const data: UserProfileData = {
       fullName: user.fullName,
       email: user.email,
       whatsapp: user.whatsapp || "",
-      institution: user.institution || "",
+      institution: user.institution || "SMKN 3 Jakarta",
       department: user.department || "",
       notificationEmail: user.notificationEmail ?? true,
       weeklySummary: user.weeklySummary ?? false,
       role: user.role,
+      username: (user as any).username ?? null,
+      hasPassword: !!(user as any).password,
+      linkedProviders,
+      avatar: (user as any).avatar ?? null,
     };
 
     return { success: true, data };
@@ -71,8 +85,9 @@ export async function updateUserProfileDB(
     const trimmedName = payload.fullName?.trim();
     const trimmedEmail = payload.email?.trim().toLowerCase();
     const trimmedWa = payload.whatsapp?.trim() || "";
-    const trimmedInst = payload.institution?.trim() || "";
     const trimmedDept = payload.department?.trim() || "";
+    // Server-side enforcement: Single-school lock to SMKN 3 Jakarta
+    const lockedInstitution = "SMKN 3 Jakarta";
 
     // 1. Validation
     if (!trimmedName) {
@@ -118,7 +133,7 @@ export async function updateUserProfileDB(
         fullName: trimmedName,
         email: trimmedEmail,
         whatsapp: trimmedWa,
-        institution: trimmedInst,
+        institution: lockedInstitution,
         department: trimmedDept,
         notificationEmail: !!payload.notificationEmail,
         weeklySummary: !!payload.weeklySummary,
@@ -131,11 +146,12 @@ export async function updateUserProfileDB(
       fullName: user.fullName,
       email: user.email,
       whatsapp: user.whatsapp || "",
-      institution: user.institution || "",
+      institution: user.institution || lockedInstitution,
       department: user.department || "",
       notificationEmail: user.notificationEmail,
       weeklySummary: user.weeklySummary,
       role: user.role,
+      avatar: (user as any).avatar ?? null,
     };
 
     return { success: true, data: returnData };
@@ -145,6 +161,64 @@ export async function updateUserProfileDB(
       success: false,
       error: error?.message || "Gagal menyimpan perubahan ke database. Silakan coba lagi.",
     };
+  }
+}
+
+import { writeFile, mkdir } from "fs/promises";
+import path from "path";
+
+export async function uploadProfilePicture(formData: FormData) {
+  try {
+    const authRes = await getAuthContext();
+    if (!authRes.success) {
+      return { success: false, error: authRes.error };
+    }
+
+    const userId = authRes.auth.userId;
+    const file = formData.get("file") as File;
+
+    if (!file) {
+      return { success: false, error: "Tidak ada file yang diunggah." };
+    }
+
+    // Validate size (2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      return { success: false, error: "Ukuran file tidak boleh lebih dari 2MB." };
+    }
+
+    // Validate type
+    const validTypes = ["image/jpeg", "image/png", "image/webp"];
+    if (!validTypes.includes(file.type)) {
+      return { success: false, error: "Format file harus JPG, PNG, atau WEBP." };
+    }
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const ext = file.type.split("/")[1];
+    const filename = `avatar-${userId}-${Date.now()}.${ext}`;
+    const uploadDir = path.join(process.cwd(), "public/uploads/avatars");
+    const filepath = path.join(uploadDir, filename);
+
+    // Ensure directory exists
+    try {
+      await mkdir(uploadDir, { recursive: true });
+    } catch (err) {
+      // Ignore if exists
+    }
+
+    await writeFile(filepath, buffer);
+    const avatarUrl = `/uploads/avatars/${filename}`;
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { avatar: avatarUrl as any },
+    });
+
+    revalidatePath("/dashboard");
+
+    return { success: true, avatarUrl };
+  } catch (error: any) {
+    console.error("Error uploading profile picture:", error);
+    return { success: false, error: "Gagal mengunggah foto profil. Silakan coba lagi." };
   }
 }
 

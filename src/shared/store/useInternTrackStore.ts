@@ -130,6 +130,7 @@ interface InternTrackState {
     department: string;
     notificationEmail: boolean;
     weeklySummary: boolean;
+    avatar?: string | null;
   };
 
   // Data Collections
@@ -181,6 +182,9 @@ interface InternTrackState {
   // In-App Notification Actions
   markAllNotificationsAsRead: () => void;
   deleteNotification: (id: string) => void;
+
+  // Account actions
+  clearUser: () => void;
 }
 
 export const useInternTrackStore = create<InternTrackState>()(
@@ -196,7 +200,7 @@ export const useInternTrackStore = create<InternTrackState>()(
     fullName: "Siswa Magang",
     email: "siswa@smkn3.sch.id",
     whatsapp: "",
-    institution: "SMKN 3 Bandung",
+    institution: "SMKN 3 Jakarta",
     department: "Rekayasa Perangkat Lunak",
     notificationEmail: true,
     weeklySummary: false,
@@ -220,6 +224,20 @@ export const useInternTrackStore = create<InternTrackState>()(
     set((state) => ({
       userProfile: { ...state.userProfile, ...profile },
     })),
+  clearUser: () =>
+    set({
+      userProfile: {
+        fullName: "",
+        email: "",
+        whatsapp: "",
+        institution: "",
+        department: "",
+        notificationEmail: true,
+        weeklySummary: false,
+        avatar: null,
+      },
+      currentRole: "Siswa",
+    }),
 
   // CRUD Actions
   addStudent: async (newStd) => {

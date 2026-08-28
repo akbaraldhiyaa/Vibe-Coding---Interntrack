@@ -56,3 +56,8 @@ sqlite_backup.json
 .agents/
 .claude/
 .windsurf/
+
+# Firebase Service Accounts
+serviceAccount.json
+firebase-adminsdk*.json
+*-firebase-adminsdk*.json

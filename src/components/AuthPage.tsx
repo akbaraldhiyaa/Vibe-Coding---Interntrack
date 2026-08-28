@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { signIn, useSession } from "next-auth/react";
 import { useInternTrackStore } from "@/shared/store/useInternTrackStore";
-import { registerUser } from "@/app/actions/auth";
+import { registerUser, verifyRegistrationOTP, resendRegistrationOTP, requestPasswordReset } from "@/app/actions/auth";
 import {
   GraduationCap,
   User,
@@ -16,16 +16,19 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
+  AlertTriangle,
 } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 import OnboardingPage from "./OnboardingPage";
+import { signInWithPopup } from "firebase/auth";
+import { auth as firebaseAuth, googleProvider } from "@/lib/firebase";
 
 export default function AuthPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
   const { userProfile, updateUserProfile } = useInternTrackStore();
 
-  const [authMode, setAuthMode] = useState<"auth" | "forgot-password" | "onboarding">("auth");
+  const [authMode, setAuthMode] = useState<"auth" | "forgot-password" | "onboarding" | "google-unlinked" | "google-new" | "otp-verification">("auth");
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -41,9 +44,15 @@ export default function AuthPage() {
           fullName: session.user.name || "",
         });
       }
-      router.push("/dashboard");
+
+      if ((session.user as any).setupComplete === false) {
+        setAuthMode("onboarding");
+      } else {
+        router.push("/dashboard");
+      }
     } else if (status === "unauthenticated") {
-      setAuthMode("auth");
+      // IMPORTANT: do NOT reset authMode if we're in onboarding.
+      // New Google users are unauthenticated during onboarding by design.
       setIsGoogleLoading(false);
       setIsLoading(false);
     }
@@ -53,11 +62,26 @@ export default function AuthPage() {
   const [showPassword, setShowPassword] = useState(false);
 
   // Form state for Login / Register
+  const [username, setUsername] = useState("");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("Siswa");
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [pendingGoogleUser, setPendingGoogleUser] = useState<{ idToken: string; email: string; name: string } | null>(null);
+
+  // Form state for OTP Verification
+  const [otp, setOtp] = useState("");
+  const [registrationEmail, setRegistrationEmail] = useState("");
+  const [otpCooldown, setOtpCooldown] = useState(0);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (otpCooldown > 0) {
+      timer = setInterval(() => setOtpCooldown((prev) => prev - 1), 1000);
+    }
+    return () => clearInterval(timer);
+  }, [otpCooldown]);
 
   // Form state for Forgot Password
   const [forgotEmail, setForgotEmail] = useState("");
@@ -65,6 +89,54 @@ export default function AuthPage() {
   const [isForgotSubmitted, setIsForgotSubmitted] = useState(false);
 
   const isValidEmail = (emailStr: string) => /\S+@\S+\.\S+/.test(emailStr.trim());
+
+  const handleGoogleSignIn = async () => {
+    setAuthError(null);
+    setIsGoogleLoading(true);
+    try {
+      const result = await signInWithPopup(firebaseAuth, googleProvider);
+      const idToken = await result.user.getIdToken();
+
+      console.log("[Google Auth] Firebase token obtained:", !!idToken);
+      console.log("[Google Auth] Firebase UID:", !!result.user.uid);
+      console.log("[Google Auth] Firebase email:", !!result.user.email);
+
+      // Sign in using our NextAuth CredentialsProvider (Firebase bridge)
+      const res = await signIn("credentials", {
+        idToken,
+        redirect: false,
+      });
+
+      console.log("[Google Auth] NextAuth signIn result:", { ok: res?.ok, error: res?.error, status: res?.status });
+
+      if (res?.ok && !res?.error) {
+        // Successfully authenticated — the useEffect will detect the new
+        // session and push to /dashboard. Add an explicit push as backup.
+        router.push("/dashboard");
+      } else if (res?.error === "EXISTING_EMAIL_NOT_LINKED") {
+        setAuthMode("google-unlinked");
+        setIsGoogleLoading(false);
+      } else {
+        // No existing linked account — route to google-new for confirmation
+        console.log("[Google Auth] No linked account found, routing to google-new state");
+        setPendingGoogleUser({
+          idToken,
+          email: result.user.email || "",
+          name: result.user.displayName || "Google User",
+        });
+        setIsGoogleLoading(false);
+        setAuthMode("google-new");
+      }
+    } catch (err: any) {
+      console.error("Google Sign-In Error:", err);
+      if (err.code === "auth/popup-closed-by-user") {
+        setAuthError("Masuk dengan Google dibatalkan.");
+      } else {
+        setAuthError("Terjadi kesalahan saat masuk dengan Google.");
+      }
+      setIsGoogleLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,7 +161,7 @@ export default function AuthPage() {
     try {
       if (activeTab === "masuk") {
         const res = await signIn("credentials", {
-          email: trimmedEmail.toLowerCase(),
+          login: trimmedEmail,
           password,
           redirect: false,
         });
@@ -104,6 +176,14 @@ export default function AuthPage() {
       } else {
         // Register tab
         const trimmedFullName = fullName.trim();
+        const trimmedUsername = username.trim().toLowerCase();
+
+        if (!trimmedUsername || !/^[a-z0-9_]{3,20}$/.test(trimmedUsername)) {
+          setAuthError("Username harus 3-20 karakter (huruf kecil, angka, _).");
+          setIsLoading(false);
+          return;
+        }
+
         if (!trimmedFullName || trimmedFullName.length < 3) {
           setAuthError("Nama lengkap minimal 3 karakter.");
           setIsLoading(false);
@@ -116,6 +196,7 @@ export default function AuthPage() {
         }
 
         const regRes = await registerUser({
+          username: trimmedUsername,
           fullName: trimmedFullName,
           email: trimmedEmail,
           password,
@@ -123,27 +204,22 @@ export default function AuthPage() {
         });
 
         if (!regRes.success) {
-          setAuthError(regRes.error || "Gagal membuat akun.");
+          setAuthError(regRes.error || "Gagal mendaftar.");
           setIsLoading(false);
           return;
         }
 
-        // Automatically sign in
-        const res = await signIn("credentials", {
-          email: trimmedEmail.toLowerCase(),
-          password,
-          redirect: false,
-        });
-
-        if (res?.error || !res?.ok) {
-          setAuthError("Akun berhasil dibuat. Silakan masuk.");
-          setActiveTab("masuk");
+        if (regRes.pending) {
+          setRegistrationEmail(trimmedEmail);
+          setAuthMode("otp-verification");
+          setOtpCooldown(60);
           setIsLoading(false);
           return;
         }
 
-        setIsSubmitted(true);
+        // Fallback if not pending
         setAuthMode("onboarding");
+        setIsLoading(false);
       }
     } catch (err: any) {
       setAuthError("Terjadi kesalahan pada sistem. Silakan coba lagi.");
@@ -151,15 +227,84 @@ export default function AuthPage() {
     }
   };
 
-  const handleForgotSubmit = (e: React.FormEvent) => {
+  const handleForgotSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isValidEmail(forgotEmail)) return;
 
     setIsForgotLoading(true);
-    setTimeout(() => {
+    setAuthError(null);
+    try {
+      const res = await requestPasswordReset(forgotEmail);
+      if (res.success) {
+        setIsForgotSubmitted(true);
+      } else {
+        // Technically for anti-enumeration we only fail on actual rate-limit
+        setAuthError(res.error || "Gagal memproses permintaan.");
+      }
+    } catch (err: any) {
+      setAuthError("Terjadi kesalahan sistem. Silakan coba lagi.");
+    } finally {
       setIsForgotLoading(false);
-      setIsForgotSubmitted(true);
-    }, 1500);
+    }
+  };
+
+  const handleVerifyOTP = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    if (!otp || otp.length < 6) {
+      setAuthError("Masukkan 6 digit kode OTP.");
+      return;
+    }
+    
+    setIsLoading(true);
+    try {
+      const res = await verifyRegistrationOTP(registrationEmail, otp);
+      if (!res.success) {
+        setAuthError(res.error || "Gagal memverifikasi OTP.");
+        setIsLoading(false);
+        return;
+      }
+      
+      // Auto login after verification
+      const loginRes = await signIn("credentials", {
+        login: registrationEmail,
+        password, // we stored this in state during registration
+        redirect: false,
+      });
+
+      if (loginRes?.error || !loginRes?.ok) {
+        setAuthError("Akun berhasil dibuat tetapi gagal masuk otomatis. Silakan masuk manual.");
+        setAuthMode("auth");
+        setActiveTab("masuk");
+        setIsLoading(false);
+        return;
+      }
+
+      setAuthMode("onboarding");
+      setIsLoading(false);
+    } catch (err) {
+      setAuthError("Terjadi kesalahan pada sistem.");
+      setIsLoading(false);
+    }
+  };
+
+  const handleResendOTP = async () => {
+    if (otpCooldown > 0) return;
+    
+    setAuthError(null);
+    setIsLoading(true);
+    try {
+      const res = await resendRegistrationOTP(registrationEmail);
+      if (res.success) {
+        setOtpCooldown(60);
+      } else {
+        setAuthError(res.error || "Gagal mengirim ulang OTP.");
+      }
+    } catch (err) {
+      setAuthError("Terjadi kesalahan sistem saat mengirim ulang.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   if (status === "loading") {
@@ -173,9 +318,27 @@ export default function AuthPage() {
   if (authMode === "onboarding") {
     return (
       <OnboardingPage
-        onBackToAuth={() => setAuthMode("auth")}
-        onComplete={() => {
-          router.push("/dashboard");
+        pendingGoogleUser={pendingGoogleUser}
+        onBackToAuth={() => {
+           setAuthMode("auth");
+           setPendingGoogleUser(null);
+        }}
+        onComplete={async () => {
+          if (pendingGoogleUser) {
+             const res = await signIn("credentials", {
+                idToken: pendingGoogleUser.idToken,
+                redirect: false
+             });
+             if (res?.error) {
+                setAuthError("Gagal masuk otomatis setelah pendaftaran Google.");
+                setAuthMode("auth");
+                setPendingGoogleUser(null);
+             } else {
+                router.push("/dashboard");
+             }
+          } else {
+             router.push("/dashboard");
+          }
         }}
       />
     );
@@ -248,7 +411,153 @@ export default function AuthPage() {
 
       {/* RIGHT PANEL - AUTHENTICATION CARD / FORGOT PASSWORD CARD */}
       <div className="w-full lg:w-1/2 flex flex-col items-center justify-center p-4 sm:p-8 lg:p-12 py-8 sm:py-12 lg:py-0 lg:min-h-screen">
-        {authMode === "auth" ? (
+        {authMode === "google-unlinked" ? (
+          /* STATE B: EXISTING EMAIL, NOT LINKED */
+          <div className="w-full max-w-[440px] bg-[var(--card-bg)] border border-[var(--card-border)] rounded-2xl sm:rounded-3xl p-6 sm:p-9 shadow-[var(--card-shadow)] transition-all animate-fadeIn">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <h2 className="text-xl font-bold tracking-tight text-[var(--card-title)] leading-tight">
+                Akun Google belum terhubung
+              </h2>
+            </div>
+            <p className="text-sm text-[var(--card-subtitle)] leading-relaxed mb-6">
+              Email ini sudah memiliki akun InternTrack, tetapi Google belum terhubung ke akun tersebut.
+              <br /><br />
+              Masuk dengan username/email + password terlebih dahulu, lalu hubungkan Google melalui <strong>Pengaturan</strong>.
+            </p>
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode("auth");
+                  setActiveTab("masuk");
+                }}
+                className="w-full token-btn-primary py-3 rounded-xl text-sm font-semibold shadow-sm cursor-pointer transition-all active:scale-[0.99]"
+              >
+                Masuk dengan Username / Email
+              </button>
+              <button
+                type="button"
+                onClick={() => setAuthMode("auth")}
+                className="w-full py-3 rounded-xl text-sm font-semibold bg-[var(--btn-secondary-bg)] hover:bg-[var(--btn-secondary-hover)] text-[var(--btn-secondary-text)] border border-[var(--btn-secondary-border)] cursor-pointer transition-all active:scale-[0.99]"
+              >
+                Kembali
+              </button>
+            </div>
+          </div>
+        ) : authMode === "google-new" ? (
+          /* STATE A: NEW GOOGLE USER */
+          <div className="w-full max-w-[440px] bg-[var(--card-bg)] border border-[var(--card-border)] rounded-2xl sm:rounded-3xl p-6 sm:p-9 shadow-[var(--card-shadow)] transition-all animate-fadeIn">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                <User className="w-5 h-5" />
+              </div>
+              <h2 className="text-xl font-bold tracking-tight text-[var(--card-title)] leading-tight">
+                Email Google belum terdaftar
+              </h2>
+            </div>
+            <p className="text-sm text-[var(--card-subtitle)] leading-relaxed mb-6">
+              Akun baru akan dibuat di InternTrack menggunakan email <strong>{pendingGoogleUser?.email}</strong>. Lanjutkan untuk mengisi data profil.
+            </p>
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={() => setAuthMode("onboarding")}
+                className="w-full token-btn-primary py-3 rounded-xl text-sm font-semibold shadow-sm cursor-pointer transition-all active:scale-[0.99]"
+              >
+                Lanjutkan Daftar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode("auth");
+                  setPendingGoogleUser(null);
+                }}
+                className="w-full py-3 rounded-xl text-sm font-semibold bg-[var(--btn-secondary-bg)] hover:bg-[var(--btn-secondary-hover)] text-[var(--btn-secondary-text)] border border-[var(--btn-secondary-border)] cursor-pointer transition-all active:scale-[0.99]"
+              >
+                Batal
+              </button>
+            </div>
+          </div>
+        ) : authMode === "otp-verification" ? (
+          /* STATE D: OTP VERIFICATION */
+          <div className="w-full max-w-[440px] bg-[var(--card-bg)] border border-[var(--card-border)] rounded-2xl sm:rounded-3xl p-6 sm:p-9 shadow-[var(--card-shadow)] transition-all animate-fadeIn">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                <Mail className="w-5 h-5" />
+              </div>
+              <h2 className="text-xl font-bold tracking-tight text-[var(--card-title)] leading-tight">
+                Verifikasi Email
+              </h2>
+            </div>
+            
+            {authError && (
+              <div className="mb-6 p-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 flex items-start gap-2.5 animate-in slide-in-from-top-1">
+                <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 mt-0.5 shrink-0" />
+                <p className="text-sm text-red-600 dark:text-red-400 font-medium">{authError}</p>
+              </div>
+            )}
+
+            <p className="text-sm text-[var(--card-subtitle)] leading-relaxed mb-6">
+              Kode verifikasi telah dikirim ke email kamu.<br /><strong>{registrationEmail}</strong>
+            </p>
+
+            <form onSubmit={handleVerifyOTP} className="space-y-5">
+              <div>
+                <label className="block text-xs font-semibold text-[var(--foreground)] mb-2 tracking-wide uppercase">
+                  Masukkan kode OTP
+                </label>
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/[^0-9]/g, ""))}
+                  placeholder="------"
+                  className="w-full px-4 py-3 bg-[var(--surface)] border border-[var(--border)] rounded-xl text-[var(--foreground)] text-center tracking-[1em] text-xl font-bold font-mono placeholder-[var(--muted-foreground)] focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                  autoComplete="one-time-code"
+                  disabled={isLoading}
+                />
+                <p className="text-xs text-[var(--muted-foreground)] mt-3">
+                  Kode berlaku selama 10 menit.
+                </p>
+              </div>
+
+              <div className="space-y-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={isLoading || otp.length < 6}
+                  className="w-full token-btn-primary py-3 rounded-xl text-sm font-semibold shadow-sm cursor-pointer transition-all active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                  Verifikasi
+                </button>
+                
+                <button
+                  type="button"
+                  onClick={handleResendOTP}
+                  disabled={isLoading || otpCooldown > 0}
+                  className="w-full py-3 rounded-xl text-sm font-semibold bg-transparent hover:bg-[var(--surface)] text-blue-600 dark:text-blue-400 border border-transparent cursor-pointer transition-all active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {otpCooldown > 0 ? `Kirim ulang dalam ${otpCooldown} detik` : "Kirim ulang kode"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode("auth");
+                    setOtp("");
+                  }}
+                  disabled={isLoading}
+                  className="w-full py-3 rounded-xl text-sm font-semibold bg-[var(--btn-secondary-bg)] hover:bg-[var(--btn-secondary-hover)] text-[var(--btn-secondary-text)] border border-[var(--btn-secondary-border)] cursor-pointer transition-all active:scale-[0.99] disabled:opacity-50"
+                >
+                  Kembali
+                </button>
+              </div>
+            </form>
+          </div>
+        ) : authMode === "auth" ? (
           /* LOGIN / REGISTER CARD */
           <div className="w-full max-w-[440px] bg-[var(--card-bg)] border border-[var(--card-border)] rounded-2xl sm:rounded-3xl p-6 sm:p-9 shadow-[var(--card-shadow)] transition-all">
             {/* Card Header */}
@@ -266,10 +575,7 @@ export default function AuthPage() {
             {/* Social Sign-in Button */}
             <button
               type="button"
-              onClick={() => {
-                setIsGoogleLoading(true);
-                signIn("google");
-              }}
+              onClick={handleGoogleSignIn}
               disabled={isGoogleLoading}
               className={`w-full flex items-center justify-center gap-3 py-2.5 px-4 rounded-xl bg-[var(--btn-secondary-bg)] hover:bg-[var(--btn-secondary-hover)] text-[var(--btn-secondary-text)] border border-[var(--btn-secondary-border)] text-sm font-semibold transition-all ${
                 isGoogleLoading ? "opacity-70 cursor-not-allowed" : "active:scale-[0.99] cursor-pointer"
@@ -363,53 +669,71 @@ export default function AuthPage() {
 
             {/* Main Form */}
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Full Name field (Only shown on "Daftar") */}
-              {activeTab === "daftar" && (
-                <div>
-                  <label className="block text-xs font-semibold text-[var(--foreground)] mb-1.5">
-                    Nama Lengkap <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[var(--input-placeholder)]">
-                      <User className="w-4 h-4" />
-                    </div>
-                    <input
-                      type="text"
-                      required
-                      value={fullName}
-                      onChange={(e) => {
-                        setFullName(e.target.value);
-                        if (authError) setAuthError(null);
-                      }}
-                      placeholder="Nama Lengkap"
-                      className="w-full token-input pl-10 pr-3.5 py-2.5 text-sm"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Email Field */}
-              <div>
-                <label className="block text-xs font-semibold text-[var(--foreground)] mb-1.5">
-                  Email <span className="text-red-500">*</span>
+              {/* Email/Username Field */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                  {activeTab === "masuk" ? "Username atau Email" : "Email"}
                 </label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[var(--input-placeholder)]">
-                    <Mail className="w-4 h-4" />
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[var(--token-text-muted)]">
+                    {activeTab === "masuk" ? <User className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
                   </div>
                   <input
-                    type="email"
-                    required
+                    type="text"
                     value={email}
-                    onChange={(e) => {
-                      setEmail(e.target.value);
-                      if (authError) setAuthError(null);
-                    }}
-                    placeholder="Email"
-                    className="w-full token-input pl-10 pr-3.5 py-2.5 text-sm"
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full token-input pl-10 pr-4 py-2.5 text-sm"
+                    placeholder={activeTab === "masuk" ? "Masukkan username atau email" : "nama@sekolah.sch.id"}
+                    required
                   />
                 </div>
               </div>
+
+              {/* Username Field (Only for Register) */}
+              {activeTab === "daftar" && (
+                <>
+                  <div className="space-y-1.5 animate-fadeIn">
+                    <label className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                      Username
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[var(--token-text-muted)]">
+                        <User className="h-4 w-4" />
+                      </div>
+                      <input
+                        type="text"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        className="w-full token-input pl-10 pr-4 py-2.5 text-sm"
+                        placeholder="johndoe_123"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {/* Full Name field */}
+                  <div className="space-y-1.5 animate-fadeIn">
+                    <label className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                      Nama Lengkap
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[var(--token-text-muted)]">
+                        <User className="h-4 w-4" />
+                      </div>
+                      <input
+                        type="text"
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        className="w-full token-input pl-10 pr-4 py-2.5 text-sm"
+                        placeholder="John Doe"
+                        required
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+
 
               {/* Password Field */}
               <div>
@@ -501,7 +825,7 @@ export default function AuthPage() {
                   {isLoading ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>{activeTab === "masuk" ? "Memverifikasi..." : "Mendaftarkan..."}</span>
+                      <span>{activeTab === "masuk" ? "Memverifikasi..." : "Memproses pendaftaran..."}</span>
                     </>
                   ) : (
                     <span>{activeTab === "masuk" ? "Masuk" : "Buat akun"}</span>
@@ -533,6 +857,14 @@ export default function AuthPage() {
                     Kami telah mengirim tautan pemulihan ke <strong>{forgotEmail}</strong>. Silakan periksa kotak masuk email Anda.
                   </p>
                 </div>
+              </div>
+            )}
+
+            {/* Error Alert */}
+            {authError && !isForgotSubmitted && (
+              <div className="mb-5 p-3.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 text-red-700 dark:text-red-300 text-xs font-medium flex items-center gap-2.5 animate-fadeIn">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-600 dark:text-red-400" />
+                <span>{authError}</span>
               </div>
             )}
 

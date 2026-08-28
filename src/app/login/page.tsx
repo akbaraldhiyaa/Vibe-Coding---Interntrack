@@ -11,7 +11,10 @@ export default async function LoginPage() {
   const session = await getServerAuthSession();
 
   if (session?.user) {
-    redirect("/dashboard");
+    // Only redirect to dashboard if onboarding is complete
+    if ((session.user as any).setupComplete) {
+      redirect("/dashboard");
+    }
   }
 
   return <AuthPage />;

@@ -172,8 +172,12 @@ export default function Navbar({ onLogout }: NavbarProps) {
               className="flex items-center gap-2 p-1 rounded-full hover:bg-[var(--surface-alt)] transition cursor-pointer"
               suppressHydrationWarning
             >
-              <div className="w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center shadow-xs" suppressHydrationWarning>
-                {isMounted && userProfile.fullName ? userProfile.fullName.substring(0, 2).toUpperCase() : "US"}
+              <div className="w-8 h-8 rounded-full bg-blue-600 border border-slate-200 dark:border-slate-700 text-white font-bold text-xs flex items-center justify-center shadow-xs overflow-hidden" suppressHydrationWarning>
+                {isMounted && userProfile.avatar ? (
+                  <img src={userProfile.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  isMounted && userProfile.fullName ? userProfile.fullName.substring(0, 2).toUpperCase() : "US"
+                )}
               </div>
               <ChevronDown className="w-3.5 h-3.5 text-slate-400 hidden sm:block" />
             </button>

@@ -16,11 +16,16 @@ export async function proxy(request: NextRequest) {
       const loginUrl = new URL("/login", request.url);
       loginUrl.searchParams.set("callbackUrl", pathname);
       return NextResponse.redirect(loginUrl);
+    } else if (token.setupComplete === false) {
+      return NextResponse.redirect(new URL("/login?mode=onboarding", request.url));
     }
   }
 
   // Redirect authenticated users away from /login or / to /dashboard
   if (token && (pathname === "/login" || pathname === "/")) {
+    if (token.setupComplete === false) {
+      return NextResponse.next();
+    }
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 

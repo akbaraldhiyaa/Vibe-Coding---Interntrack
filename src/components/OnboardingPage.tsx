@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { useSession } from "next-auth/react";
+import { completeOnboarding } from "@/app/actions/auth";
 import {
   GraduationCap,
   Check,
@@ -9,19 +11,24 @@ import {
   Building,
   UserCheck,
   MessageCircle,
+  AlertCircle
 } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 
 interface OnboardingPageProps {
   onComplete?: () => void;
   onBackToAuth?: () => void;
+  pendingGoogleUser?: { idToken: string; email: string; name: string } | null;
 }
 
 export type RoleType = "siswa" | "pembimbing" | "admin";
 
-export default function OnboardingPage({ onComplete, onBackToAuth }: OnboardingPageProps) {
+export default function OnboardingPage({ onComplete, onBackToAuth, pendingGoogleUser }: OnboardingPageProps) {
+  const { update } = useSession();
   const [step, setStep] = useState<number>(1);
   const [selectedRole, setSelectedRole] = useState<RoleType>("siswa");
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Step 2 Form States (Data Diri)
   const [idNumber, setIdNumber] = useState("");
@@ -89,13 +96,66 @@ export default function OnboardingPage({ onComplete, onBackToAuth }: OnboardingP
   const handleNextStep = () => {
     if (step < 3) {
       setStep(step + 1);
-    } else {
-      setIsFinished(true);
-      if (onComplete) {
-        setTimeout(() => {
-          onComplete();
-        }, 1500);
+    }
+  };
+
+  const handleFinish = async () => {
+    setErrorMsg(null);
+    setIsRegistering(true);
+
+    try {
+      let roleString = "Siswa";
+      if (selectedRole === "pembimbing") roleString = "Guru Pembimbing";
+      if (selectedRole === "admin") roleString = "Admin";
+
+      if (pendingGoogleUser) {
+        // We need to register the Google user!
+        const { registerGoogleUser } = await import("@/app/actions/auth");
+        
+        const res = await registerGoogleUser({
+          fullName: pendingGoogleUser.name,
+          role: roleString,
+          idToken: pendingGoogleUser.idToken,
+          institution,
+          department,
+          whatsapp,
+          idNumber,
+        });
+
+        if (!res.success) {
+          setErrorMsg(res.error || "Gagal membuat akun.");
+          setIsRegistering(false);
+          return;
+        }
+      } else {
+        // We need to complete onboarding for the authenticated manual user
+        const res = await completeOnboarding({
+          role: roleString,
+          institution,
+          department,
+          whatsapp,
+          idNumber,
+        });
+
+        if (!res.success) {
+          setErrorMsg(res.error || "Gagal melengkapi profil.");
+          setIsRegistering(false);
+          return;
+        }
+
+        // Refresh the session token so setupComplete becomes true
+        await update({ setupComplete: true });
       }
+
+      // Proceed to complete (which logs them in or routes them)
+      setIsFinished(true);
+      setTimeout(() => {
+        if (onComplete) onComplete();
+      }, 1500);
+    } catch (err) {
+      console.error(err);
+      setErrorMsg("Terjadi kesalahan sistem.");
+      setIsRegistering(false);
     }
   };
 
@@ -242,24 +302,29 @@ export default function OnboardingPage({ onComplete, onBackToAuth }: OnboardingP
                 />
               </div>
 
-              {/* Institution Field */}
+              {/* Institution Field (Read-Only / System Controlled) */}
               <div>
                 <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
                   Sekolah / Instansi <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-600">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 dark:text-slate-500">
                     <Building className="w-4 h-4" />
                   </div>
                   <input
                     type="text"
-                    required
-                    value={institution}
-                    onChange={(e) => setInstitution(e.target.value)}
-                    placeholder="Nama Sekolah / Instansi"
-                    className="w-full token-input pl-10 pr-3.5 py-2.5 text-sm"
+                    readOnly
+                    tabIndex={-1}
+                    aria-readonly="true"
+                    value="SMKN 3 Jakarta"
+                    onKeyDown={(e) => e.preventDefault()}
+                    onPaste={(e) => e.preventDefault()}
+                    className="w-full pl-10 pr-3.5 py-2.5 text-sm rounded-xl bg-slate-100/80 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700/80 cursor-not-allowed select-none focus:outline-none focus:ring-0 focus:border-slate-200 dark:focus:border-slate-700/80 shadow-none"
                   />
                 </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                  Sekolah ditentukan oleh sistem.
+                </p>
               </div>
 
               {/* Department Field */}
@@ -396,13 +461,33 @@ export default function OnboardingPage({ onComplete, onBackToAuth }: OnboardingP
               </div>
             ) : (
               <div className="pt-2">
+                {errorMsg && (
+                  <div className="mb-4 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-xs font-medium border border-red-100 dark:border-red-900/30 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{errorMsg}</span>
+                  </div>
+                )}
                 <button
                   type="button"
-                  onClick={handleNextStep}
-                  className="w-full py-3 px-4 rounded-xl bg-[#1E3A8A] hover:bg-[#122353] active:scale-[0.99] text-white text-sm font-semibold tracking-wide transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                  disabled={isRegistering}
+                  onClick={handleFinish}
+                  className={`w-full py-3 px-4 rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all text-sm font-semibold tracking-wide ${
+                    isRegistering
+                      ? "bg-slate-200 dark:bg-slate-800 text-slate-500 cursor-not-allowed"
+                      : "bg-[#1E3A8A] hover:bg-[#122353] active:scale-[0.99] text-white cursor-pointer"
+                  }`}
                 >
-                  <span>Lanjut</span>
-                  <ArrowRight className="w-4 h-4" />
+                  {isRegistering ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Menyimpan Profil...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>Selesai & Mulai Eksplorasi</span>
+                    </>
+                  )}
                 </button>
               </div>
             )}

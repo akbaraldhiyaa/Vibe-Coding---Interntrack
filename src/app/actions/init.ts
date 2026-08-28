@@ -42,19 +42,21 @@ export async function fetchDashboardData(userEmail?: string) {
           fullName: dbUser.fullName,
           email: dbUser.email,
           whatsapp: dbUser.whatsapp || "",
-          institution: dbUser.institution || "",
+          institution: dbUser.institution || "SMKN 3 Jakarta",
           department: dbUser.department || "",
           notificationEmail: dbUser.notificationEmail ?? true,
           weeklySummary: dbUser.weeklySummary ?? false,
+          avatar: dbUser.avatar || null,
         }
       : {
           fullName: "Pengguna",
           email: "",
           whatsapp: "",
-          institution: "",
+          institution: "SMKN 3 Jakarta",
           department: "",
           notificationEmail: true,
           weeklySummary: false,
+          avatar: null,
         };
 
     const userRole = (dbUser?.role || "Siswa") as any;
