@@ -283,13 +283,23 @@ export async function registerGoogleUser(data: {
   whatsapp?: string;
   idNumber: string;
 }) {
+  let stage = "init";
   try {
+    stage = "firebase-admin-import";
     const { adminAuth } = await import("@/lib/firebase-admin");
+
+    if (!adminAuth) {
+      console.error("[registerGoogleUser] FAIL stage=firebase-admin-import: adminAuth is null — check FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY env vars on Vercel");
+      return { success: false, error: "Konfigurasi server tidak valid. Hubungi admin." };
+    }
+
+    stage = "firebase-verify";
     const decodedToken = await adminAuth.verifyIdToken(data.idToken);
     const uid = decodedToken.uid;
     const email = decodedToken.email?.toLowerCase();
 
     if (!email) {
+      console.error("[registerGoogleUser] FAIL stage=firebase-verify: no email in decoded token");
       return { success: false, error: "Token Google tidak valid." };
     }
 
@@ -306,11 +316,13 @@ export async function registerGoogleUser(data: {
       return { success: false, error: "Peran pengguna tidak valid." };
     }
 
+    stage = "user-lookup";
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
       return { success: false, error: "Email sudah terdaftar. Silakan masuk dengan email dan kata sandi, lalu tautkan akun Google di Pengaturan." };
     }
 
+    stage = "linked-account-lookup";
     const existingLink = await prisma.linkedAccount.findUnique({
       where: { provider_providerAccountId: { provider: "google", providerAccountId: uid } }
     });
@@ -319,6 +331,7 @@ export async function registerGoogleUser(data: {
       return { success: false, error: "Akun Google ini sudah terdaftar." };
     }
 
+    stage = "user-create";
     const user = await prisma.user.create({
       data: {
         fullName: trimmedName,
@@ -339,10 +352,12 @@ export async function registerGoogleUser(data: {
     });
 
     if (normalizedRole === "Siswa") {
+      stage = "student-lookup";
       const existingStudent = await prisma.student.findFirst({
         where: { OR: [{ email }, { name: trimmedName }] },
       });
       if (!existingStudent) {
+        stage = "student-create";
         await prisma.student.create({
           data: {
             nisn: data.idNumber,
@@ -358,12 +373,25 @@ export async function registerGoogleUser(data: {
       }
     }
 
+    console.log("[registerGoogleUser] SUCCESS stage=complete role=" + normalizedRole);
     return { success: true };
   } catch (error: any) {
-    console.error("Error in registerGoogleUser:", error);
+    // Log stage and error metadata only — never log tokens, passwords, or secrets
+    console.error("[registerGoogleUser] FAIL", JSON.stringify({
+      stage,
+      code: error?.code ?? null,
+      message: error?.message ?? null,
+      meta: error?.meta ?? null,
+    }));
+    if (error.code === 'P2002') {
+      const target = error?.meta?.target;
+      console.error("[registerGoogleUser] P2002 unique constraint on:", target);
+      return { success: false, error: "Data sudah terdaftar (konflik unik). Hubungi admin jika ini kesalahan." };
+    }
     return { success: false, error: "Gagal membuat akun." };
   }
 }
+
 
 /**
  * Adds username + password credentials to the currently authenticated user.
