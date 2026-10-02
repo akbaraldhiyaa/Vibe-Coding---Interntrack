@@ -64,6 +64,7 @@ export const authOptions: NextAuthOptions = {
               name: linkedAccount.user.fullName,
               email: linkedAccount.user.email,
               role: linkedAccount.user.role,
+              department: linkedAccount.user.department || "",
               setupComplete: !!linkedAccount.user.institution,
             };
           } catch (error) {
@@ -114,6 +115,7 @@ export const authOptions: NextAuthOptions = {
           name: user.fullName,
           email: user.email,
           role: user.role,
+          department: user.department || "",
           setupComplete: !!user.institution,
         };
       },
@@ -124,8 +126,10 @@ export const authOptions: NextAuthOptions = {
   },
   callbacks: {
     async jwt({ token, user, account, trigger, session }) {
-      if (trigger === "update" && session?.setupComplete !== undefined) {
-        token.setupComplete = session.setupComplete;
+      if (trigger === "update") {
+        if (session?.setupComplete !== undefined) token.setupComplete = session.setupComplete;
+        if (session?.role !== undefined) token.role = session.role;
+        if (session?.department !== undefined) token.department = session.department;
       }
       if (account) {
         token.provider = account.provider;
@@ -134,6 +138,7 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id;
         token.role = (user as any).role || "Siswa";
+        token.department = (user as any).department || "";
         token.setupComplete = (user as any).setupComplete;
       }
       return token;
@@ -142,6 +147,7 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         (session.user as any).id = token.id || token.sub;
         (session.user as any).role = token.role || "Siswa";
+        (session.user as any).department = token.department || "";
         (session.user as any).setupComplete = token.setupComplete;
       }
       return session;

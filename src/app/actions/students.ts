@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { getAuthContext, requireRoles } from "@/lib/rbac";
+import { getAuthContext, requireRoles, getTeacherSupervisorWhere, isTeacherAuthorizedForStudent } from "@/lib/rbac";
 
 export async function getStudents() {
   try {
@@ -11,7 +11,19 @@ export async function getStudents() {
       return { success: false, error: authRes.error };
     }
 
+    const { role, department, studentId, fullName, email } = authRes.auth;
+
+    let studentWhere: any = {};
+    if (role === "Siswa") {
+      studentWhere = studentId ? { id: studentId } : { OR: [{ email }, { name: fullName }] };
+    } else if (role === "Guru Pembimbing" || (role as string) === "Pembimbing Sekolah") {
+      studentWhere = getTeacherSupervisorWhere(fullName);
+    } else if (role === "Pembimbing Industri") {
+      studentWhere = { industrySupervisor: { contains: fullName, mode: "insensitive" } };
+    }
+
     const students = await prisma.student.findMany({
+      where: studentWhere,
       include: {
         dudi: true,
       },
@@ -72,6 +84,13 @@ export async function updateStudent(id: string, data: any) {
       return { success: false, error: authRes.error };
     }
 
+    if (authRes.auth.role === "Guru Pembimbing" || (authRes.auth.role as string) === "Pembimbing Sekolah") {
+      const isAuth = await isTeacherAuthorizedForStudent(authRes.auth.fullName, id);
+      if (!isAuth) {
+        return { success: false, error: "Forbidden: Anda hanya dapat memperbarui data siswa bimbingan Anda." };
+      }
+    }
+
     const student = await prisma.student.update({
       where: { id },
       data,
@@ -89,6 +108,13 @@ export async function updateStudentStage(id: string, stage: string) {
     const authRes = await requireRoles(["Admin", "Guru Pembimbing"]);
     if (!authRes.success) {
       return { success: false, error: authRes.error };
+    }
+
+    if (authRes.auth.role === "Guru Pembimbing" || (authRes.auth.role as string) === "Pembimbing Sekolah") {
+      const isAuth = await isTeacherAuthorizedForStudent(authRes.auth.fullName, id);
+      if (!isAuth) {
+        return { success: false, error: "Forbidden: Anda hanya dapat memperbarui tahapan siswa bimbingan Anda." };
+      }
     }
 
     const student = await prisma.student.update({

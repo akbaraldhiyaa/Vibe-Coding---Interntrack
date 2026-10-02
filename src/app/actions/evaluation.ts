@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { getAuthContext, requireRoles } from "@/lib/rbac";
+import { getAuthContext, requireRoles, getTeacherSupervisorWhere, isTeacherAuthorizedForStudent } from "@/lib/rbac";
 
 export async function getEvaluations() {
   try {
@@ -11,7 +11,25 @@ export async function getEvaluations() {
       return { success: false, error: authRes.error };
     }
 
+    const { role, department, studentId, fullName, email } = authRes.auth;
+
+    let studentWhere: any = {};
+    if (role === "Siswa") {
+      studentWhere = studentId ? { id: studentId } : { OR: [{ email }, { name: fullName }] };
+    } else if (role === "Guru Pembimbing" || (role as string) === "Pembimbing Sekolah") {
+      studentWhere = getTeacherSupervisorWhere(fullName);
+    } else if (role === "Pembimbing Industri") {
+      studentWhere = { industrySupervisor: { contains: fullName, mode: "insensitive" } };
+    }
+
+    const students = await prisma.student.findMany({
+      where: studentWhere,
+      select: { id: true },
+    });
+    const allowedStudentIds = students.map((s) => s.id);
+
     const evaluations = await prisma.evaluation.findMany({
+      where: { studentId: { in: allowedStudentIds } },
       include: {
         student: {
           include: {
@@ -19,6 +37,7 @@ export async function getEvaluations() {
           },
         },
       },
+      orderBy: { createdAt: "desc" },
     });
     return { success: true, data: evaluations };
   } catch (error) {
@@ -38,6 +57,13 @@ export async function addEvaluation(data: {
     const authRes = await requireRoles(["Admin", "Guru Pembimbing", "Pembimbing Industri"]);
     if (!authRes.success) {
       return { success: false, error: authRes.error };
+    }
+
+    if (authRes.auth.role === "Guru Pembimbing" || (authRes.auth.role as string) === "Pembimbing Sekolah") {
+      const isAuth = await isTeacherAuthorizedForStudent(authRes.auth.fullName, data.studentId);
+      if (!isAuth) {
+        return { success: false, error: "Forbidden: Anda hanya dapat menilai siswa bimbingan Anda." };
+      }
     }
 
     const evalRecord = await prisma.evaluation.create({
@@ -67,6 +93,16 @@ export async function updateEvaluation(
       return { success: false, error: authRes.error };
     }
 
+    if (authRes.auth.role === "Guru Pembimbing" || (authRes.auth.role as string) === "Pembimbing Sekolah") {
+      const existing = await prisma.evaluation.findUnique({
+        where: { id },
+        select: { studentId: true },
+      });
+      if (!existing || !(await isTeacherAuthorizedForStudent(authRes.auth.fullName, existing.studentId))) {
+        return { success: false, error: "Forbidden: Anda hanya dapat mengupdate penilaian siswa bimbingan Anda." };
+      }
+    }
+
     const evalRecord = await prisma.evaluation.update({
       where: { id },
       data,
@@ -84,6 +120,13 @@ export async function issueCertificateDB(studentId: string, certificateNumber: s
     const authRes = await requireRoles(["Admin", "Guru Pembimbing", "Pembimbing Industri"]);
     if (!authRes.success) {
       return { success: false, error: authRes.error };
+    }
+
+    if (authRes.auth.role === "Guru Pembimbing" || (authRes.auth.role as string) === "Pembimbing Sekolah") {
+      const isAuth = await isTeacherAuthorizedForStudent(authRes.auth.fullName, studentId);
+      if (!isAuth) {
+        return { success: false, error: "Forbidden: Anda hanya dapat menerbitkan sertifikat untuk siswa bimbingan Anda." };
+      }
     }
 
     const existing = await prisma.evaluation.findFirst({

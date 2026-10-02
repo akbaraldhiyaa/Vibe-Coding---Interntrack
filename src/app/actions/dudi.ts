@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { getAuthContext, requireRoles } from "@/lib/rbac";
+import { getAuthContext, requireRoles, getTeacherSupervisorWhere } from "@/lib/rbac";
 
 export async function getDudis() {
   try {
@@ -11,7 +11,29 @@ export async function getDudis() {
       return { success: false, error: authRes.error };
     }
 
-    const dudis = await prisma.dudi.findMany();
+    const { role, department, studentId, fullName, email } = authRes.auth;
+
+    if (role === "Admin" || (role as string) === "Admin Sekolah" || role === "Kepala Sekolah") {
+      const dudis = await prisma.dudi.findMany();
+      return { success: true, data: dudis };
+    }
+
+    let studentWhere: any = {};
+    if (role === "Siswa") {
+      studentWhere = studentId ? { id: studentId } : { OR: [{ email }, { name: fullName }] };
+    } else if (role === "Guru Pembimbing" || (role as string) === "Pembimbing Sekolah") {
+      studentWhere = getTeacherSupervisorWhere(fullName);
+    }
+
+    const students = await prisma.student.findMany({
+      where: studentWhere,
+      select: { dudiId: true },
+    });
+    const dudiIds = students.map((s) => s.dudiId).filter((id): id is string => Boolean(id));
+
+    const dudis = dudiIds.length > 0
+      ? await prisma.dudi.findMany({ where: { id: { in: dudiIds } } })
+      : [];
     return { success: true, data: dudis };
   } catch (error) {
     console.error("Error fetching DUDIs:", error);

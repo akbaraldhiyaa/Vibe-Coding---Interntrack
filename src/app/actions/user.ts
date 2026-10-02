@@ -164,8 +164,7 @@ export async function updateUserProfileDB(
   }
 }
 
-import { writeFile, mkdir } from "fs/promises";
-import path from "path";
+import { uploadAvatarToStorage, deleteAvatarFromStorage } from "@/lib/supabase-storage";
 
 export async function uploadProfilePicture(formData: FormData) {
   try {
@@ -186,36 +185,55 @@ export async function uploadProfilePicture(formData: FormData) {
       return { success: false, error: "Ukuran file tidak boleh lebih dari 2MB." };
     }
 
-    // Validate type
-    const validTypes = ["image/jpeg", "image/png", "image/webp"];
-    if (!validTypes.includes(file.type)) {
+    // Validate MIME type
+    const validMimes = ["image/jpeg", "image/png", "image/webp"];
+    if (!validMimes.includes(file.type)) {
       return { success: false, error: "Format file harus JPG, PNG, atau WEBP." };
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const ext = file.type.split("/")[1];
-    const filename = `avatar-${userId}-${Date.now()}.${ext}`;
-    const uploadDir = path.join(process.cwd(), "public/uploads/avatars");
-    const filepath = path.join(uploadDir, filename);
-
-    // Ensure directory exists
-    try {
-      await mkdir(uploadDir, { recursive: true });
-    } catch (err) {
-      // Ignore if exists
+    // Validate file extension
+    const nameExt = file.name ? file.name.split(".").pop()?.toLowerCase() : "";
+    const validExts = ["jpg", "jpeg", "png", "webp"];
+    if (nameExt && !validExts.includes(nameExt)) {
+      return { success: false, error: "Ekstensi file tidak valid. Gunakan .jpg, .jpeg, .png, atau .webp." };
     }
 
-    await writeFile(filepath, buffer);
-    const avatarUrl = `/uploads/avatars/${filename}`;
+    const ext = nameExt || (file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg");
+    const buffer = Buffer.from(await file.arrayBuffer());
 
+    // Fetch existing user to know previous avatar
+    const existingUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { avatar: true },
+    });
+    const previousAvatar = existingUser?.avatar;
+
+    // 1. Upload new avatar to Supabase Storage
+    const uploadRes = await uploadAvatarToStorage(userId, buffer, file.type, ext);
+    if (!uploadRes.success || !uploadRes.avatarUrl) {
+      return { success: false, error: uploadRes.error || "Gagal mengunggah foto ke storage." };
+    }
+
+    const newAvatarUrl = uploadRes.avatarUrl;
+
+    // 2. Update database record
     await prisma.user.update({
       where: { id: userId },
-      data: { avatar: avatarUrl as any },
+      data: { avatar: newAvatarUrl },
     });
+
+    // 3. Delete previous avatar if it was stored in Supabase Storage
+    if (previousAvatar && previousAvatar !== newAvatarUrl) {
+      try {
+        await deleteAvatarFromStorage(previousAvatar, userId);
+      } catch (err) {
+        console.warn("[uploadProfilePicture] Non-critical error deleting previous avatar:", err);
+      }
+    }
 
     revalidatePath("/dashboard");
 
-    return { success: true, avatarUrl };
+    return { success: true, avatarUrl: newAvatarUrl };
   } catch (error: any) {
     console.error("Error uploading profile picture:", error);
     return { success: false, error: "Gagal mengunggah foto profil. Silakan coba lagi." };

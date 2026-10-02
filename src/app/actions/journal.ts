@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { getAuthContext, requireRoles } from "@/lib/rbac";
+import { getAuthContext, requireRoles, getTeacherSupervisorWhere, isTeacherAuthorizedForStudent } from "@/lib/rbac";
 
 export async function getJournals() {
   try {
@@ -11,7 +11,25 @@ export async function getJournals() {
       return { success: false, error: authRes.error };
     }
 
+    const { role, department, studentId, fullName, email } = authRes.auth;
+
+    let studentWhere: any = {};
+    if (role === "Siswa") {
+      studentWhere = studentId ? { id: studentId } : { OR: [{ email }, { name: fullName }] };
+    } else if (role === "Guru Pembimbing" || (role as string) === "Pembimbing Sekolah") {
+      studentWhere = getTeacherSupervisorWhere(fullName);
+    } else if (role === "Pembimbing Industri") {
+      studentWhere = { industrySupervisor: { contains: fullName, mode: "insensitive" } };
+    }
+
+    const students = await prisma.student.findMany({
+      where: studentWhere,
+      select: { id: true },
+    });
+    const allowedStudentIds = students.map((s) => s.id);
+
     const journals = await prisma.journal.findMany({
+      where: { studentId: { in: allowedStudentIds } },
       include: {
         student: {
           include: {
@@ -19,6 +37,7 @@ export async function getJournals() {
           },
         },
       },
+      orderBy: { createdAt: "desc" },
     });
     return { success: true, data: journals };
   } catch (error) {
@@ -77,6 +96,19 @@ export async function updateJournalStatus(
     const authRes = await requireRoles(["Admin", "Guru Pembimbing", "Pembimbing Industri"]);
     if (!authRes.success) {
       return { success: false, error: authRes.error };
+    }
+
+    if (authRes.auth.role === "Guru Pembimbing" || (authRes.auth.role as string) === "Pembimbing Sekolah") {
+      const existing = await prisma.journal.findUnique({
+        where: { id },
+        select: { studentId: true },
+      });
+      if (!existing || !(await isTeacherAuthorizedForStudent(authRes.auth.fullName, existing.studentId))) {
+        return {
+          success: false,
+          error: "Forbidden: Anda hanya dapat memverifikasi jurnal siswa bimbingan Anda.",
+        };
+      }
     }
 
     const journal = await prisma.journal.update({

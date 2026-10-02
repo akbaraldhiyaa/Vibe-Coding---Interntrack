@@ -8,7 +8,14 @@ import { addAttendance as addAttendanceDB, deleteAttendance as deleteAttendanceD
 import { addJournal as addJournalDB, deleteJournal as deleteJournalDB, updateJournal as updateJournalDB, updateJournalStatus as updateJournalStatusDB } from "@/app/actions/journal";
 import { addEvaluation as addEvaluationDB, updateEvaluation as updateEvaluationDB, issueCertificateDB } from "@/app/actions/evaluation";
 
-export type Role = "Admin" | "Guru Pembimbing" | "Pembimbing Industri" | "Siswa" | "Kepala Sekolah";
+export type Role =
+  | "Admin"
+  | "Admin Sekolah"
+  | "Guru Pembimbing"
+  | "Pembimbing Sekolah"
+  | "Pembimbing Industri"
+  | "Siswa"
+  | "Kepala Sekolah";
 
 export type RoutePath =
   | "dashboard"
@@ -192,16 +199,16 @@ export const useInternTrackStore = create<InternTrackState>()(
     (set, get) => ({
   // Initial State
   currentRoute: "dashboard",
-  currentRole: "Admin",
+  currentRole: "Siswa",
   searchQuery: "",
   isSidebarOpen: true,
 
   userProfile: {
-    fullName: "Siswa Magang",
-    email: "siswa@smkn3.sch.id",
+    fullName: "",
+    email: "",
     whatsapp: "",
     institution: "SMKN 3 Jakarta",
-    department: "Rekayasa Perangkat Lunak",
+    department: "",
     notificationEmail: true,
     weeklySummary: false,
   },

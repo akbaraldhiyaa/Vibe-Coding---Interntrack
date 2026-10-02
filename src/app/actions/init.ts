@@ -1,41 +1,86 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { getAuthContext } from "@/lib/rbac";
+import { getAuthContext, Role, getTeacherSupervisorWhere } from "@/lib/rbac";
+import { Prisma } from "@prisma/client";
 
 export async function fetchDashboardData(userEmail?: string) {
   try {
     const authRes = await getAuthContext();
 
+    if (!authRes.success) {
+      return { success: false, error: authRes.error };
+    }
+
+    const { role, department, studentId, fullName, email } = authRes.auth;
+
+    // Build role- and department-scoped query filter for Student
+    let studentWhere: Prisma.StudentWhereInput = {};
+
+    if (role === "Siswa") {
+      studentWhere = studentId
+        ? { id: studentId }
+        : {
+            OR: [
+              { email: email },
+              { name: fullName },
+            ],
+          };
+    } else if (role === "Guru Pembimbing" || (role as string) === "Pembimbing Sekolah") {
+      studentWhere = getTeacherSupervisorWhere(fullName);
+    } else if (role === "Pembimbing Industri") {
+      studentWhere = {
+        OR: [
+          { industrySupervisor: { contains: fullName, mode: "insensitive" } },
+        ],
+      };
+    } else {
+      // Admin / Admin Sekolah / Kepala Sekolah: school-wide access
+      studentWhere = {};
+    }
+
     const dbStudents = await prisma.student.findMany({
+      where: studentWhere,
       include: { dudi: true },
     });
-    const dbDudis = await prisma.dudi.findMany();
+
+    const allowedStudentIds = dbStudents.map((s) => s.id);
+
+    // Dudi scoping:
+    let dbDudis: any[] = [];
+    if (role === "Admin" || (role as string) === "Admin Sekolah" || role === "Kepala Sekolah") {
+      dbDudis = await prisma.dudi.findMany();
+    } else {
+      const dudiIds = dbStudents
+        .map((s) => s.dudiId)
+        .filter((id): id is string => Boolean(id));
+      dbDudis = dudiIds.length > 0
+        ? await prisma.dudi.findMany({ where: { id: { in: dudiIds } } })
+        : [];
+    }
+
     const dbAttendance = await prisma.attendanceRecord.findMany({
+      where: { studentId: { in: allowedStudentIds } },
       include: { student: { include: { dudi: true } } },
+      orderBy: { createdAt: "desc" },
     });
+
     const dbJournals = await prisma.journal.findMany({
+      where: { studentId: { in: allowedStudentIds } },
       include: { student: { include: { dudi: true } } },
+      orderBy: { createdAt: "desc" },
     });
+
     const dbEvaluations = await prisma.evaluation.findMany({
+      where: { studentId: { in: allowedStudentIds } },
       include: { student: { include: { dudi: true } } },
+      orderBy: { createdAt: "desc" },
     });
 
-    // Fetch user from DB based on authenticated session or provided email
-    let dbUser = null;
-    if (authRes.success) {
-      dbUser = await prisma.user.findUnique({
-        where: { id: authRes.auth.userId },
-      });
-    } else if (userEmail && userEmail.trim()) {
-      dbUser = await prisma.user.findUnique({
-        where: { email: userEmail.trim().toLowerCase() },
-      });
-    }
-
-    if (!dbUser) {
-      dbUser = await prisma.user.findFirst();
-    }
+    // Fetch user from DB based on authenticated session
+    const dbUser = await prisma.user.findUnique({
+      where: { id: authRes.auth.userId },
+    });
 
     const mappedUserProfile = dbUser
       ? {
@@ -49,17 +94,17 @@ export async function fetchDashboardData(userEmail?: string) {
           avatar: dbUser.avatar || null,
         }
       : {
-          fullName: "Pengguna",
-          email: "",
+          fullName: fullName,
+          email: email,
           whatsapp: "",
           institution: "SMKN 3 Jakarta",
-          department: "",
+          department: department || "",
           notificationEmail: true,
           weeklySummary: false,
           avatar: null,
         };
 
-    const userRole = (dbUser?.role || "Siswa") as any;
+    const userRole = (role === "Admin Sekolah" ? "Admin" : role) as Role;
 
     // Map Prisma models to Zustand expected types
     const mappedStudents = dbStudents.map((s) => {

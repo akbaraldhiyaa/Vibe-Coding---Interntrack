@@ -8,6 +8,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import fs from "fs/promises";
 import path from "path";
+import { deleteAvatarFromStorage } from "@/lib/supabase-storage";
 
 function generateOTP(): string {
   return crypto.randomInt(100000, 999999).toString();
@@ -168,8 +169,8 @@ export async function verifyRegistrationOTP(email: string, otp: string) {
           data: {
             nisn: `005${Math.floor(1000000 + Math.random() * 9000000)}`,
             name: pending.fullName,
-            class: "XII RPL 1",
-            department: "Rekayasa Perangkat Lunak",
+            class: "XII",
+            department: "Umum",
             email: pending.email,
             stage: "Pendaftaran & Pembekalan",
             status: "Pembekalan",
@@ -282,7 +283,40 @@ export async function registerGoogleUser(data: {
   department?: string;
   whatsapp?: string;
   idNumber: string;
+  notificationEmail?: boolean;
+  weeklySummary?: boolean;
 }) {
+  const trimmedName = data.fullName?.trim();
+  const role = data.role?.trim() || "Siswa";
+
+  if (!trimmedName || trimmedName.length < 3) {
+    return { success: false, error: "Nama lengkap minimal 3 karakter." };
+  }
+
+  const allowedRoles = ["Admin", "Guru Pembimbing", "Pembimbing Industri", "Siswa", "Kepala Sekolah", "Pembimbing Sekolah"];
+  const normalizedRole = role === "Pembimbing Sekolah" ? "Guru Pembimbing" : role;
+  if (!allowedRoles.includes(normalizedRole) && !allowedRoles.includes(role)) {
+    return { success: false, error: "Peran pengguna tidak valid." };
+  }
+
+  const trimmedDepartment = data.department?.trim();
+  if (!trimmedDepartment) {
+    return { success: false, error: "Jurusan / Program Keahlian wajib diisi." };
+  }
+
+  const trimmedWhatsapp = data.whatsapp?.trim();
+  if (!trimmedWhatsapp) {
+    return { success: false, error: "Nomor WhatsApp wajib diisi." };
+  }
+  const waRegex = /^(?:\+62|62|0)8[1-9][0-9]{7,11}$/;
+  if (!waRegex.test(trimmedWhatsapp)) {
+    return { success: false, error: "Format nomor WhatsApp tidak valid. Contoh: 08123456789 atau +628123456789" };
+  }
+
+  // Use notification preferences from onboarding, defaulting to true
+  const notifEmail = data.notificationEmail !== undefined ? data.notificationEmail : true;
+  const weeklySummaryPref = data.weeklySummary !== undefined ? data.weeklySummary : true;
+
   let stage = "init";
   try {
     stage = "firebase-admin-import";
@@ -294,7 +328,13 @@ export async function registerGoogleUser(data: {
     }
 
     stage = "firebase-verify";
-    const decodedToken = await adminAuth.verifyIdToken(data.idToken);
+    let decodedToken;
+    try {
+      decodedToken = await adminAuth.verifyIdToken(data.idToken);
+    } catch (tokenError: any) {
+      console.error("[registerGoogleUser] FAIL stage=firebase-verify:", tokenError?.code, tokenError?.message);
+      return { success: false, error: "Sesi Google sudah kedaluwarsa. Silakan masuk ulang dengan Google." };
+    }
     const uid = decodedToken.uid;
     const email = decodedToken.email?.toLowerCase();
 
@@ -303,75 +343,135 @@ export async function registerGoogleUser(data: {
       return { success: false, error: "Token Google tidak valid." };
     }
 
-    const trimmedName = data.fullName?.trim();
-    const role = data.role?.trim() || "Siswa";
+    stage = "idempotency-check";
+    // Check if this Google UID is already linked to a user (returning Google user)
+    const existingLink = await prisma.linkedAccount.findUnique({
+      where: { provider_providerAccountId: { provider: "google", providerAccountId: uid } },
+      include: { user: true },
+    });
 
-    if (!trimmedName || trimmedName.length < 3) {
-      return { success: false, error: "Nama lengkap minimal 3 karakter." };
+    if (existingLink && existingLink.user) {
+      // Returning Google user — update onboarding data and return success
+      console.log("[registerGoogleUser] Returning Google user detected, updating profile");
+      await prisma.user.update({
+        where: { id: existingLink.user.id },
+        data: {
+          role: normalizedRole,
+          institution: "SMKN 3 Jakarta",
+          department: trimmedDepartment,
+          whatsapp: trimmedWhatsapp,
+          notificationEmail: notifEmail,
+          weeklySummary: weeklySummaryPref,
+        },
+      });
+
+      if (normalizedRole === "Siswa") {
+        const student = await prisma.student.findFirst({
+          where: { OR: [{ email }, { name: trimmedName }] },
+        });
+        if (student) {
+          await prisma.student.update({
+            where: { id: student.id },
+            data: {
+              department: trimmedDepartment,
+              whatsapp: trimmedWhatsapp,
+              ...(data.idNumber ? { nisn: data.idNumber } : {}),
+            },
+          });
+        }
+      }
+
+      console.log("[registerGoogleUser] SUCCESS stage=returning-user role=" + normalizedRole);
+      return { success: true };
     }
 
-    const allowedRoles = ["Admin", "Guru Pembimbing", "Pembimbing Industri", "Siswa", "Kepala Sekolah", "Pembimbing Sekolah"];
-    const normalizedRole = role === "Pembimbing Sekolah" ? "Guru Pembimbing" : role;
-    if (!allowedRoles.includes(normalizedRole) && !allowedRoles.includes(role)) {
-      return { success: false, error: "Peran pengguna tidak valid." };
-    }
-
-    stage = "user-lookup";
+    // Check if a user with this email already exists (but without Google linked)
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
-      return { success: false, error: "Email sudah terdaftar. Silakan masuk dengan email dan kata sandi, lalu tautkan akun Google di Pengaturan." };
-    }
-
-    stage = "linked-account-lookup";
-    const existingLink = await prisma.linkedAccount.findUnique({
-      where: { provider_providerAccountId: { provider: "google", providerAccountId: uid } }
-    });
-
-    if (existingLink) {
-      return { success: false, error: "Akun Google ini sudah terdaftar." };
-    }
-
-    stage = "user-create";
-    const user = await prisma.user.create({
-      data: {
-        fullName: trimmedName,
-        email,
-        role: normalizedRole,
-        institution: "SMKN 3 Jakarta",
-        department: data.department || null,
-        whatsapp: data.whatsapp || null,
-        notificationEmail: true,
-        weeklySummary: true,
-        linkedAccounts: {
-          create: {
-            provider: "google",
-            providerAccountId: uid,
-          }
-        }
-      },
-    });
-
-    if (normalizedRole === "Siswa") {
-      stage = "student-lookup";
-      const existingStudent = await prisma.student.findFirst({
-        where: { OR: [{ email }, { name: trimmedName }] },
+      // User exists with this email but no Google link — auto-link Google account
+      stage = "auto-link";
+      await prisma.linkedAccount.create({
+        data: {
+          userId: existingUser.id,
+          provider: "google",
+          providerAccountId: uid,
+        },
       });
-      if (!existingStudent) {
-        stage = "student-create";
-        await prisma.student.create({
-          data: {
-            nisn: data.idNumber,
-            name: trimmedName,
-            class: "XII RPL 1",
-            department: data.department || "Umum",
-            email,
-            stage: "Pendaftaran & Pembekalan",
-            status: "Pembekalan",
-            whatsapp: data.whatsapp || null,
-          },
+      // Update onboarding data
+      await prisma.user.update({
+        where: { id: existingUser.id },
+        data: {
+          role: normalizedRole,
+          institution: "SMKN 3 Jakarta",
+          department: trimmedDepartment,
+          whatsapp: trimmedWhatsapp,
+          notificationEmail: notifEmail,
+          weeklySummary: weeklySummaryPref,
+        },
+      });
+
+      if (normalizedRole === "Siswa") {
+        const student = await prisma.student.findFirst({
+          where: { OR: [{ email }, { name: trimmedName }] },
         });
+        if (student) {
+          await prisma.student.update({
+            where: { id: student.id },
+            data: {
+              department: trimmedDepartment,
+              whatsapp: trimmedWhatsapp,
+              ...(data.idNumber ? { nisn: data.idNumber } : {}),
+            },
+          });
+        }
       }
+
+      console.log("[registerGoogleUser] SUCCESS stage=auto-linked existing user role=" + normalizedRole);
+      return { success: true };
     }
+
+    // Brand new user — create everything atomically
+    stage = "user-create";
+    await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          fullName: trimmedName,
+          email,
+          role: normalizedRole,
+          institution: "SMKN 3 Jakarta",
+          department: trimmedDepartment,
+          whatsapp: trimmedWhatsapp,
+          notificationEmail: notifEmail,
+          weeklySummary: weeklySummaryPref,
+          linkedAccounts: {
+            create: {
+              provider: "google",
+              providerAccountId: uid,
+            }
+          }
+        },
+      });
+
+      if (normalizedRole === "Siswa") {
+        const existingStudent = await tx.student.findFirst({
+          where: { OR: [{ email }, { name: trimmedName }] },
+        });
+        if (!existingStudent) {
+          await tx.student.create({
+            data: {
+              nisn: data.idNumber,
+              name: trimmedName,
+              class: "XII",
+              department: trimmedDepartment,
+              email,
+              stage: "Pendaftaran & Pembekalan",
+              status: "Pembekalan",
+              whatsapp: trimmedWhatsapp,
+            },
+          });
+        }
+      }
+    });
 
     console.log("[registerGoogleUser] SUCCESS stage=complete role=" + normalizedRole);
     return { success: true };
@@ -388,7 +488,14 @@ export async function registerGoogleUser(data: {
       console.error("[registerGoogleUser] P2002 unique constraint on:", target);
       return { success: false, error: "Data sudah terdaftar (konflik unik). Hubungi admin jika ini kesalahan." };
     }
-    return { success: false, error: "Gagal membuat akun." };
+    // Provide categorized, meaningful error messages
+    if (error.message?.includes("ENOTFOUND") || error.message?.includes("ECONNREFUSED") || error.message?.includes("tenant") || error.message?.includes("connect")) {
+      return { success: false, error: "Tidak dapat terhubung ke database. Silakan coba lagi dalam beberapa saat." };
+    }
+    if (error.code === "auth/id-token-expired" || error.code === "auth/argument-error") {
+      return { success: false, error: "Sesi Google sudah kedaluwarsa. Silakan masuk ulang dengan Google." };
+    }
+    return { success: false, error: "Gagal membuat akun. Silakan coba lagi atau hubungi admin." };
   }
 }
 
@@ -581,11 +688,10 @@ export async function deleteMyAccount() {
     // Attempt to delete avatar file safely
     if (user.avatar) {
       try {
-        // avatar path is likely e.g., '/uploads/avatars/filename.jpg' or similar
-        // Adjust based on the actual path structure used in the app, or just wrap in try-catch to be safe.
-        // If it starts with '/', we prepend process.cwd() + '/public'
-        if (user.avatar.startsWith('/')) {
-          const avatarPath = path.join(process.cwd(), 'public', user.avatar);
+        if (user.avatar.includes("supabase.co/storage")) {
+          await deleteAvatarFromStorage(user.avatar, userId);
+        } else if (user.avatar.startsWith("/")) {
+          const avatarPath = path.join(process.cwd(), "public", user.avatar);
           await fs.unlink(avatarPath);
         }
       } catch (e) {
@@ -637,7 +743,32 @@ export async function completeOnboarding(data: {
   department?: string;
   whatsapp?: string;
   idNumber: string;
+  notificationEmail?: boolean;
+  weeklySummary?: boolean;
 }) {
+  const allowedRoles = ["Admin", "Guru Pembimbing", "Pembimbing Industri", "Siswa", "Kepala Sekolah", "Pembimbing Sekolah"];
+  const normalizedRole = data.role === "Pembimbing Sekolah" ? "Guru Pembimbing" : data.role;
+  if (!allowedRoles.includes(normalizedRole)) {
+     return { success: false, error: "Peran pengguna tidak valid." };
+  }
+
+  const trimmedDepartment = data.department?.trim();
+  if (!trimmedDepartment) {
+    return { success: false, error: "Jurusan / Program Keahlian wajib diisi." };
+  }
+
+  const trimmedWhatsapp = data.whatsapp?.trim();
+  if (!trimmedWhatsapp) {
+    return { success: false, error: "Nomor WhatsApp wajib diisi." };
+  }
+  const waRegex = /^(?:\+62|62|0)8[1-9][0-9]{7,11}$/;
+  if (!waRegex.test(trimmedWhatsapp)) {
+    return { success: false, error: "Format nomor WhatsApp tidak valid. Contoh: 08123456789 atau +628123456789" };
+  }
+
+  const notifEmail = data.notificationEmail !== undefined ? data.notificationEmail : true;
+  const weeklySummaryPref = data.weeklySummary !== undefined ? data.weeklySummary : true;
+
   try {
     const session = await getServerSession(authOptions);
     if (!session || !session.user || !(session.user as any).id) {
@@ -648,20 +779,17 @@ export async function completeOnboarding(data: {
     const userName = session.user.name;
 
     if (!userEmail) return { success: false, error: "Email tidak ditemukan di sesi." };
-
-    const allowedRoles = ["Admin", "Guru Pembimbing", "Pembimbing Industri", "Siswa", "Kepala Sekolah", "Pembimbing Sekolah"];
-    const normalizedRole = data.role === "Pembimbing Sekolah" ? "Guru Pembimbing" : data.role;
-    if (!allowedRoles.includes(normalizedRole)) {
-       return { success: false, error: "Peran pengguna tidak valid." };
-    }
+    const weeklySummaryPref = data.weeklySummary !== undefined ? data.weeklySummary : true;
 
     await prisma.user.update({
       where: { id: userId },
       data: {
         role: normalizedRole,
         institution: "SMKN 3 Jakarta",
-        department: data.department || null,
-        whatsapp: data.whatsapp || null,
+        department: trimmedDepartment,
+        whatsapp: trimmedWhatsapp,
+        notificationEmail: notifEmail,
+        weeklySummary: weeklySummaryPref,
       },
     });
 
@@ -675,8 +803,8 @@ export async function completeOnboarding(data: {
           where: { id: existingStudent.id },
           data: {
             nisn: data.idNumber,
-            department: data.department || "Umum",
-            whatsapp: data.whatsapp || null,
+            department: trimmedDepartment,
+            whatsapp: trimmedWhatsapp,
           },
         });
       } else {
@@ -685,11 +813,11 @@ export async function completeOnboarding(data: {
             nisn: data.idNumber,
             name: userName || "Unknown",
             class: "XII",
-            department: data.department || "Umum",
+            department: trimmedDepartment,
             email: userEmail,
             stage: "Pendaftaran & Pembekalan",
             status: "Pembekalan",
-            whatsapp: data.whatsapp || null,
+            whatsapp: trimmedWhatsapp,
           },
         });
       }
@@ -700,6 +828,9 @@ export async function completeOnboarding(data: {
     console.error("completeOnboarding error:", error);
     if (error.code === 'P2002') {
       return { success: false, error: "Nomor Induk sudah terdaftar oleh siswa lain." };
+    }
+    if (error.message?.includes("ENOTFOUND") || error.message?.includes("ECONNREFUSED") || error.message?.includes("tenant") || error.message?.includes("connect")) {
+      return { success: false, error: "Tidak dapat terhubung ke database. Silakan coba lagi dalam beberapa saat." };
     }
     return { success: false, error: "Gagal menyimpan data onboarding." };
   }

@@ -13,6 +13,7 @@ import {
   LogOut,
   X,
   KanbanSquare,
+  Database,
 } from "lucide-react";
 import { useInternTrackStore } from "@/shared/store/useInternTrackStore";
 
@@ -129,36 +130,49 @@ export default function Sidebar({ onLogout }: SidebarProps) {
     }, 0);
   }, [closeSidebar]);
 
+  const dashboardHref =
+    currentRole === "Guru Pembimbing" || (currentRole as string) === "Pembimbing Sekolah"
+      ? "/dashboard/teacher"
+      : currentRole === "Admin" || (currentRole as string) === "Admin Sekolah" || currentRole === "Kepala Sekolah"
+      ? "/dashboard/admin"
+      : "/dashboard/student";
+
   const navigationItems = [
     {
-      href: "/dashboard",
+      href: dashboardHref,
       label: "Dashboard",
       icon: LayoutDashboard,
-      roles: ["Admin", "Guru Pembimbing", "Pembimbing Industri", "Siswa", "Kepala Sekolah"],
+      roles: ["Admin", "Admin Sekolah", "Guru Pembimbing", "Pembimbing Sekolah", "Pembimbing Industri", "Siswa", "Kepala Sekolah"],
     },
     {
       href: "/dashboard/kanban",
       label: "Kanban Tahapan",
       icon: KanbanSquare,
-      roles: ["Admin", "Guru Pembimbing", "Pembimbing Industri", "Siswa", "Kepala Sekolah"],
+      roles: ["Admin", "Admin Sekolah", "Guru Pembimbing", "Pembimbing Sekolah", "Pembimbing Industri", "Kepala Sekolah"],
     },
     {
       href: "/dashboard/absensi",
       label: "Absensi",
       icon: QrCode,
-      roles: ["Admin", "Guru Pembimbing", "Pembimbing Industri", "Siswa", "Kepala Sekolah"],
+      roles: ["Admin", "Admin Sekolah", "Guru Pembimbing", "Pembimbing Sekolah", "Pembimbing Industri", "Siswa", "Kepala Sekolah"],
     },
     {
       href: "/dashboard/jurnal",
       label: "Jurnal Harian",
       icon: BookOpen,
-      roles: ["Admin", "Guru Pembimbing", "Pembimbing Industri", "Siswa", "Kepala Sekolah"],
+      roles: ["Admin", "Admin Sekolah", "Guru Pembimbing", "Pembimbing Sekolah", "Pembimbing Industri", "Siswa", "Kepala Sekolah"],
     },
     {
       href: "/dashboard/penilaian",
       label: "Laporan & Sertifikat",
       icon: Award,
-      roles: ["Admin", "Guru Pembimbing", "Pembimbing Industri", "Siswa", "Kepala Sekolah"],
+      roles: ["Admin", "Admin Sekolah", "Guru Pembimbing", "Pembimbing Sekolah", "Pembimbing Industri", "Siswa", "Kepala Sekolah"],
+    },
+    {
+      href: "/dashboard/data-master",
+      label: "Data Master",
+      icon: Database,
+      roles: ["Admin", "Admin Sekolah", "Kepala Sekolah"],
     },
   ];
 
@@ -184,7 +198,7 @@ export default function Sidebar({ onLogout }: SidebarProps) {
       <div className="flex items-center justify-between">
         <div
           className="flex items-center gap-3 px-1 cursor-pointer"
-          onClick={() => handleNavigate("/dashboard")}
+          onClick={() => handleNavigate(dashboardHref)}
         >
           <div className="w-9 h-9 rounded-full bg-slate-900 dark:bg-slate-800 text-white flex items-center justify-center shadow-xs shrink-0">
             <GraduationCap className="w-5 h-5 text-slate-100" />
@@ -222,10 +236,16 @@ export default function Sidebar({ onLogout }: SidebarProps) {
             .filter((item) => item.roles.includes(currentRole))
             .map((item) => {
               const Icon = item.icon;
-              const isActive =
-                item.href === "/dashboard"
-                  ? pathname === "/dashboard"
-                  : pathname === item.href || pathname.startsWith(item.href + "/");
+              const isDashboardItem = item.label === "Dashboard";
+              const isDashboardRoute =
+                pathname === "/dashboard" ||
+                pathname === "/dashboard/student" ||
+                pathname === "/dashboard/teacher" ||
+                pathname === "/dashboard/admin";
+
+              const isActive = isDashboardItem
+                ? isDashboardRoute
+                : pathname === item.href || pathname.startsWith(item.href + "/");
 
               return (
                 <button

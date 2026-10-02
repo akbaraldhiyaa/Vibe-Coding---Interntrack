@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { getAuthContext, requireRoles } from "@/lib/rbac";
+import { getAuthContext, requireRoles, getTeacherSupervisorWhere, isTeacherAuthorizedForStudent } from "@/lib/rbac";
 
 export async function getAttendance() {
   try {
@@ -11,7 +11,25 @@ export async function getAttendance() {
       return { success: false, error: authRes.error };
     }
 
+    const { role, department, studentId, fullName, email } = authRes.auth;
+
+    let studentWhere: any = {};
+    if (role === "Siswa") {
+      studentWhere = studentId ? { id: studentId } : { OR: [{ email }, { name: fullName }] };
+    } else if (role === "Guru Pembimbing" || (role as string) === "Pembimbing Sekolah") {
+      studentWhere = getTeacherSupervisorWhere(fullName);
+    } else if (role === "Pembimbing Industri") {
+      studentWhere = { industrySupervisor: { contains: fullName, mode: "insensitive" } };
+    }
+
+    const students = await prisma.student.findMany({
+      where: studentWhere,
+      select: { id: true },
+    });
+    const allowedStudentIds = students.map((s) => s.id);
+
     const records = await prisma.attendanceRecord.findMany({
+      where: { studentId: { in: allowedStudentIds } },
       include: {
         student: {
           include: {
@@ -41,7 +59,7 @@ export async function addAttendance(data: {
       return { success: false, error: authRes.error };
     }
 
-    const { role, studentId } = authRes.auth;
+    const { role, studentId, fullName } = authRes.auth;
 
     // Ownership check: If role is Siswa, student can only record for themselves
     if (role === "Siswa") {
@@ -51,7 +69,15 @@ export async function addAttendance(data: {
           error: "Forbidden: Anda hanya dapat mencatat absensi untuk akun Anda sendiri.",
         };
       }
-    } else if (!["Admin", "Guru Pembimbing", "Pembimbing Industri"].includes(role)) {
+    } else if (role === "Guru Pembimbing" || (role as string) === "Pembimbing Sekolah") {
+      const isAuth = await isTeacherAuthorizedForStudent(fullName, data.studentId);
+      if (!isAuth) {
+        return {
+          success: false,
+          error: "Forbidden: Anda hanya dapat mencatat absensi siswa bimbingan Anda.",
+        };
+      }
+    } else if (!["Admin", "Pembimbing Industri"].includes(role)) {
       return {
         success: false,
         error: "Forbidden: Peran Anda tidak memiliki izin mencatat absensi.",
@@ -85,7 +111,7 @@ export async function updateAttendance(
       return { success: false, error: authRes.error };
     }
 
-    const { role, studentId } = authRes.auth;
+    const { role, studentId, fullName } = authRes.auth;
 
     if (role === "Siswa") {
       // Siswa can only update correctionNote on their own record
@@ -96,7 +122,18 @@ export async function updateAttendance(
           error: "Forbidden: Anda hanya dapat mengajukan koreksi untuk absensi Anda sendiri.",
         };
       }
-    } else if (!["Admin", "Guru Pembimbing", "Pembimbing Industri"].includes(role)) {
+    } else if (role === "Guru Pembimbing" || (role as string) === "Pembimbing Sekolah") {
+      const existing = await prisma.attendanceRecord.findUnique({
+        where: { id },
+        select: { studentId: true },
+      });
+      if (!existing || !(await isTeacherAuthorizedForStudent(fullName, existing.studentId))) {
+        return {
+          success: false,
+          error: "Forbidden: Anda hanya dapat memperbarui absensi siswa bimbingan Anda.",
+        };
+      }
+    } else if (!["Admin", "Pembimbing Industri"].includes(role)) {
       return {
         success: false,
         error: "Forbidden: Peran Anda tidak memiliki izin memperbarui absensi.",

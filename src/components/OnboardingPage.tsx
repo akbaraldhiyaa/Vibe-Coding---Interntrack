@@ -15,6 +15,7 @@ import {
   AlertCircle
 } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
+import { useInternTrackStore } from "@/shared/store/useInternTrackStore";
 
 interface OnboardingPageProps {
   onComplete?: () => void;
@@ -26,6 +27,7 @@ export type RoleType = "siswa" | "pembimbing" | "admin";
 
 export default function OnboardingPage({ onComplete, onBackToAuth, pendingGoogleUser }: OnboardingPageProps) {
   const { update } = useSession();
+  const { updateUserProfile, setRole } = useInternTrackStore();
   const [step, setStep] = useState<number>(1);
   const [selectedRole, setSelectedRole] = useState<RoleType>("siswa");
   const [isRegistering, setIsRegistering] = useState(false);
@@ -34,7 +36,8 @@ export default function OnboardingPage({ onComplete, onBackToAuth, pendingGoogle
   // Step 2 Form States (Data Diri)
   const [idNumber, setIdNumber] = useState("");
   const [institution, setInstitution] = useState("SMKN 3 Jakarta");
-  const [department, setDepartment] = useState("Rekayasa Perangkat Lunak");
+  const [department, setDepartment] = useState("");
+  const [departmentError, setDepartmentError] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [whatsappError, setWhatsappError] = useState("");
 
@@ -65,8 +68,8 @@ export default function OnboardingPage({ onComplete, onBackToAuth, pendingGoogle
   const validateWhatsApp = (val: string): boolean => {
     const trimmed = val.trim();
     if (!trimmed) {
-      setWhatsappError("");
-      return true;
+      setWhatsappError("Nomor WhatsApp wajib diisi.");
+      return false;
     }
     // Indonesian phone number format regex: 08xx or +628xx or 628xx (8 to 13 digits after prefix)
     const waRegex = /^(?:\+62|62|0)8[1-9][0-9]{7,11}$/;
@@ -78,6 +81,16 @@ export default function OnboardingPage({ onComplete, onBackToAuth, pendingGoogle
     return true;
   };
 
+  const validateDepartment = (val: string): boolean => {
+    const trimmed = val.trim();
+    if (!trimmed) {
+      setDepartmentError("Jurusan / Program Keahlian wajib diisi.");
+      return false;
+    }
+    setDepartmentError("");
+    return true;
+  };
+
   const handleWhatsappChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setWhatsapp(val);
@@ -86,9 +99,19 @@ export default function OnboardingPage({ onComplete, onBackToAuth, pendingGoogle
     }
   };
 
+  const handleDepartmentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setDepartment(val);
+    if (departmentError) {
+      validateDepartment(val);
+    }
+  };
+
   const handleStep2Submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (whatsapp && !validateWhatsApp(whatsapp)) {
+    const isWaValid = validateWhatsApp(whatsapp);
+    const isDeptValid = validateDepartment(department);
+    if (!idNumber.trim() || !isWaValid || !isDeptValid) {
       return;
     }
     handleNextStep();
@@ -103,6 +126,13 @@ export default function OnboardingPage({ onComplete, onBackToAuth, pendingGoogle
   const handleFinish = async () => {
     setErrorMsg(null);
     setIsRegistering(true);
+
+    if (!department.trim() || !whatsapp.trim() || !idNumber.trim()) {
+      setErrorMsg("Harap lengkapi semua data diri yang wajib diisi terlebih dahulu.");
+      setStep(2);
+      setIsRegistering(false);
+      return;
+    }
 
     try {
       let roleString = "Siswa";
@@ -136,6 +166,8 @@ export default function OnboardingPage({ onComplete, onBackToAuth, pendingGoogle
           department,
           whatsapp,
           idNumber,
+          notificationEmail: emailNotification,
+          weeklySummary: weeklyDigest,
         });
 
         if (!res.success) {
@@ -151,6 +183,8 @@ export default function OnboardingPage({ onComplete, onBackToAuth, pendingGoogle
           department,
           whatsapp,
           idNumber,
+          notificationEmail: emailNotification,
+          weeklySummary: weeklyDigest,
         });
 
         if (!res.success) {
@@ -159,9 +193,18 @@ export default function OnboardingPage({ onComplete, onBackToAuth, pendingGoogle
           return;
         }
 
-        // Refresh the session token so setupComplete becomes true
-        await update({ setupComplete: true });
+        // Refresh the session token so setupComplete becomes true and role/dept are set
+        await update({ setupComplete: true, role: roleString, department });
       }
+
+      updateUserProfile({
+        department,
+        whatsapp,
+        institution,
+        notificationEmail: emailNotification,
+        weeklySummary: weeklyDigest,
+      });
+      setRole(roleString as any);
 
       // Proceed to complete (which logs them in or routes them)
       setIsFinished(true);
@@ -346,21 +389,32 @@ export default function OnboardingPage({ onComplete, onBackToAuth, pendingGoogle
               {/* Department Field */}
               <div>
                 <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
-                  Jurusan / Program Keahlian
+                  Jurusan / Program Keahlian <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
+                  required
                   value={department}
-                  onChange={(e) => setDepartment(e.target.value)}
-                  placeholder="Contoh: Rekayasa Perangkat Lunak"
-                  className="w-full token-input px-3.5 py-2.5 text-sm"
+                  onChange={handleDepartmentChange}
+                  onBlur={() => validateDepartment(department)}
+                  placeholder="Rekayasa Perangkat Lunak"
+                  className={`w-full token-input px-3.5 py-2.5 text-sm transition-all ${
+                    departmentError
+                      ? "border-red-500 focus:border-red-500 focus:ring-2 focus:ring-red-100 dark:focus:ring-red-950"
+                      : ""
+                  }`}
                 />
+                {departmentError && (
+                  <p className="text-[11px] text-red-500 font-medium mt-1 animate-fadeIn">
+                    {departmentError}
+                  </p>
+                )}
               </div>
 
               {/* NEW NOMOR WHATSAPP FIELD */}
               <div>
                 <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200 mb-1.5">
-                  Nomor WhatsApp
+                  Nomor WhatsApp <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-600">
@@ -368,6 +422,7 @@ export default function OnboardingPage({ onComplete, onBackToAuth, pendingGoogle
                   </div>
                   <input
                     type="tel"
+                    required
                     value={whatsapp}
                     onChange={handleWhatsappChange}
                     onBlur={() => validateWhatsApp(whatsapp)}

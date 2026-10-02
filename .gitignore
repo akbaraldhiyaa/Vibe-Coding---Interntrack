@@ -49,7 +49,7 @@ next-env.d.ts
 *.db-wal
 
 # SQLite backups
-*.backup
+*.backup*
 sqlite_backup.json
 
 # AI / IDE local files
